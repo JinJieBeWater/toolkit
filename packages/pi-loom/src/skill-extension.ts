@@ -1,0 +1,450 @@
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "typebox";
+import { HERDR_PROTOCOL, HerdrAdapter } from "./herdr-adapter.ts";
+import { NodeHerdrSocketTransport } from "./herdr-socket-transport.ts";
+import { compilePersistentHelperLaunch, type PiThinking } from "./skill-launch.ts";
+import {
+  HelperDirectory,
+  SkillLaunchExecutor,
+  helperBindingStorePath,
+  type SkillLaunchResult,
+} from "./skill-launch-executor.ts";
+import { SkillReportDelivery, type SkillReportDeliveryResult } from "./skill-reporting.ts";
+import { SkillRetirementExecutor, type SkillRetirementResult } from "./skill-retirement.ts";
+
+export type SkillExtensionEnvironment = Record<string, string | undefined>;
+
+export function childExecutionEnv(env: SkillExtensionEnvironment): Record<string, string> {
+  const child: Record<string, string> = {};
+  for (const key of [
+    "PATH",
+    "PI_CODING_AGENT_DIR",
+    "HOME",
+    "PI_LOOM_EXTENSION_PATH",
+    "PI_HERDR_WORKSTREAM_LABEL",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "NODE_EXTRA_CA_CERTS",
+  ] as const) {
+    const value = env[key];
+    if (value) child[key] = value;
+  }
+  return child;
+}
+
+type LaunchExecutorPort = {
+  execute: (input: Parameters<SkillLaunchExecutor["execute"]>[0]) => Promise<SkillLaunchResult>;
+};
+type ReportingPort = {
+  deliver: (
+    input: Parameters<SkillReportDelivery["deliver"]>[0],
+  ) => Promise<SkillReportDeliveryResult>;
+};
+type RetirementPort = {
+  retire: (
+    input: Parameters<SkillRetirementExecutor["retire"]>[0],
+  ) => Promise<SkillRetirementResult>;
+};
+export type LoomExtensionOptions = {
+  env?: SkillExtensionEnvironment;
+  extensionPath?: string;
+  helperDirectory?: HelperDirectory;
+  launchExecutor?: LaunchExecutorPort;
+  reporting?: ReportingPort;
+  retirement?: RetirementPort;
+};
+
+function attachHelperDirectory(
+  directory: HelperDirectory,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): void {
+  const sessionFile = ctx.sessionManager?.getSessionFile();
+  directory.attach(sessionFile ? helperBindingStorePath(sessionFile) : undefined);
+}
+
+const thinkingSchema = Type.Union([
+  Type.Literal("off"),
+  Type.Literal("minimal"),
+  Type.Literal("low"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+  Type.Literal("xhigh"),
+  Type.Literal("max"),
+]);
+
+const checkoutSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("current") }),
+  Type.Object({ kind: Type.Literal("existing"), path: Type.String({ minLength: 1 }) }),
+  Type.Object({
+    kind: Type.Literal("worktree"),
+    branch: Type.String({ minLength: 1 }),
+    base: Type.Optional(Type.String({ minLength: 1 })),
+    path: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+]);
+
+type CheckoutRequest = Static<typeof checkoutSchema>;
+
+const DEFAULT_DESCENDANTS =
+  "May delegate within the assigned workstream and approved access boundary; remains responsible for descendant integration and settlement.";
+
+export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOptions = {}): void {
+  const env = options.env ?? process.env;
+  const paneId = env.HERDR_PANE_ID;
+  if (env.HERDR_ENV !== "1" || !paneId) return;
+
+  let adapter: HerdrAdapter | undefined;
+  const herdr = (): HerdrAdapter => {
+    if (adapter) return adapter;
+    const socketPath = env.HERDR_SOCKET_PATH;
+    if (!socketPath) throw new Error("HERDR_SOCKET_PATH is required for Pi Loom mechanics");
+    adapter = new HerdrAdapter({
+      transport: new NodeHerdrSocketTransport({ socketPath }),
+      supportedProtocol: HERDR_PROTOCOL,
+    });
+    return adapter;
+  };
+  const directory = options.helperDirectory ?? new HelperDirectory();
+  const launchExecutor =
+    options.launchExecutor ??
+    new SkillLaunchExecutor({
+      herdr: herdr(),
+      directory,
+      executionEnv: childExecutionEnv(env),
+    });
+  const reporting = options.reporting ?? new SkillReportDelivery({ port: herdr() });
+  const retirement =
+    options.retirement ?? new SkillRetirementExecutor({ herdr: herdr(), directory });
+  const childRole = Boolean(env.PI_HERDR_PARENT_PANE_ID && env.PI_HERDR_TASK_ID);
+  const reportDeliveries = new Map<"COMPLETED" | "BLOCKED", Promise<SkillReportDeliveryResult>>();
+
+  const startPersistent = async (
+    input: {
+      name: string;
+      workstream?: string;
+      role: string;
+      task: string;
+      access: "read" | "write";
+      files: string[];
+      writeApproved?: boolean;
+      deliverable: string;
+      keep: boolean;
+      descendants: string;
+      model?: string;
+      thinking?: PiThinking;
+      checkout: CheckoutRequest;
+      callerCwd: string;
+    },
+    ctx: Pick<ExtensionContext, "sessionManager">,
+  ): Promise<SkillLaunchResult> => {
+    attachHelperDirectory(directory, ctx);
+    if (!/^[a-z][a-z0-9_-]{0,31}$/.test(input.name)) {
+      throw new Error("name must match Herdr agent name grammar");
+    }
+    if (input.access === "write" && input.writeApproved !== true) {
+      throw new Error("write launch requires explicit user approval for the file boundary");
+    }
+    const scope =
+      input.access === "read"
+        ? { access: "read-only" as const, allowedFiles: input.files }
+        : {
+            access: "write" as const,
+            allowedFiles: input.files,
+            userApproval: { confirmed: true as const },
+          };
+    const extensionPath = options.extensionPath ?? env.PI_LOOM_EXTENSION_PATH;
+    const cwd = input.checkout.kind === "existing" ? input.checkout.path : input.callerCwd;
+    const launch = compilePersistentHelperLaunch({
+      ...(input.workstream ? { workstreamLabel: input.workstream } : {}),
+      roleLabel: input.role,
+      cwd,
+      ...(extensionPath ? { extensionPath } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.thinking ? { thinking: input.thinking } : {}),
+      objective: input.task,
+      scope,
+      returnChannel: {
+        taskId: input.name,
+        parentPaneId: paneId,
+        durableResult: input.deliverable,
+        coordinatorPaneId: env.PI_HERDR_COORDINATOR_PANE_ID ?? paneId,
+      },
+      reuse: input.keep
+        ? { kind: "retain", role: input.role }
+        : { kind: "retire-after-integration" },
+      descendantResponsibilities: input.descendants,
+    });
+    try {
+      return await launchExecutor.execute({
+        helperAlias: input.name,
+        callerPaneId: paneId,
+        callerCwd: input.callerCwd,
+        launch,
+        ...(input.checkout.kind === "worktree"
+          ? {
+              worktree: {
+                branch: input.checkout.branch,
+                ...(input.checkout.base ? { base: input.checkout.base } : {}),
+                ...(input.checkout.path ? { path: input.checkout.path } : {}),
+              },
+            }
+          : {}),
+      });
+    } catch {
+      return {
+        kind: "reconcile",
+        helperAlias: input.name,
+        reason: "Loom start state is unconfirmed; inspect live state before retry",
+      };
+    }
+  };
+
+  const startResult = (result: SkillLaunchResult) => {
+    if (result.kind === "started") {
+      return {
+        content: [{ type: "text" as const, text: `Helper ${result.helperAlias} started` }],
+        details: result,
+      };
+    }
+    const details =
+      result.kind === "rejected"
+        ? { kind: result.kind, helperAlias: result.helperAlias, code: result.code }
+        : { kind: result.kind, helperAlias: result.helperAlias };
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            result.kind === "rejected"
+              ? `Helper ${result.helperAlias} rejected: ${result.code}`
+              : `Helper ${result.helperAlias} reconcile; inspect live state`,
+        },
+      ],
+      details,
+    };
+  };
+
+  const deliverReport = (input: {
+    status: "COMPLETED" | "BLOCKED";
+    outcome: string;
+    durablePointers: string[];
+    changed: string[];
+    verification: string[];
+    needNext: string;
+  }) =>
+    reporting.deliver({
+      taskId: env.PI_HERDR_TASK_ID!,
+      ...input,
+      childPaneId: paneId,
+      childLabel: env.PI_HERDR_CHILD_LABEL ?? "helper",
+      ...(env.PI_HERDR_WORKSTREAM_LABEL ? { workstreamLabel: env.PI_HERDR_WORKSTREAM_LABEL } : {}),
+      parentPaneId: env.PI_HERDR_PARENT_PANE_ID!,
+      ...(env.PI_HERDR_COORDINATOR_PANE_ID
+        ? { coordinatorPaneId: env.PI_HERDR_COORDINATOR_PANE_ID }
+        : {}),
+    });
+
+  if (childRole) {
+    pi.registerTool({
+      name: "loom_report",
+      label: "Loom Report",
+      description: "Return one verified result to the direct Pi Loom owner",
+      parameters: Type.Object({
+        status: Type.Union([Type.Literal("COMPLETED"), Type.Literal("BLOCKED")]),
+        summary: Type.String({ minLength: 1 }),
+        pointers: Type.Array(Type.String()),
+        changed: Type.Array(Type.String()),
+        checks: Type.Array(Type.String(), { minItems: 1 }),
+        next: Type.String({ minLength: 1 }),
+      }),
+      async execute(_toolCallId, params) {
+        const existing = reportDeliveries.get(params.status);
+        if (existing) {
+          await existing;
+          return {
+            content: [{ type: "text" as const, text: "Report already delivered" }],
+            details: { delivered: "duplicate", taskId: env.PI_HERDR_TASK_ID },
+          };
+        }
+        const delivery = deliverReport({
+          status: params.status,
+          outcome: params.summary,
+          durablePointers: params.pointers,
+          changed: params.changed,
+          verification: params.checks,
+          needNext: params.next,
+        });
+        reportDeliveries.set(params.status, delivery);
+        let result: SkillReportDeliveryResult;
+        try {
+          result = await delivery;
+        } catch (error) {
+          if (reportDeliveries.get(params.status) === delivery) {
+            reportDeliveries.delete(params.status);
+          }
+          throw error;
+        }
+        return {
+          content: [
+            { type: "text" as const, text: `Report delivered through ${result.delivered}` },
+          ],
+          details: result,
+        };
+      },
+    });
+  }
+
+  pi.registerTool({
+    name: "loom_start",
+    label: "Loom Start",
+    description: "Start one persistent Pi helper in a current, existing, or managed checkout",
+    parameters: Type.Object({
+      name: Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" }),
+      task: Type.String({ minLength: 1 }),
+      checkout: Type.Optional(checkoutSchema),
+      workstream: Type.String({ minLength: 1 }),
+      role: Type.Optional(Type.String({ minLength: 1 })),
+      access: Type.Union([Type.Literal("read"), Type.Literal("write")]),
+      files: Type.Array(Type.String(), { minItems: 1 }),
+      writeApproved: Type.Optional(Type.Boolean({ default: false })),
+      deliverable: Type.Optional(Type.String({ minLength: 1 })),
+      keep: Type.Optional(Type.Boolean({ default: false })),
+      model: Type.Optional(Type.String()),
+      thinking: Type.Optional(thinkingSchema),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      return startResult(
+        await startPersistent(
+          {
+            name: params.name,
+            workstream: params.workstream,
+            role: params.role ?? "helper",
+            task: params.task,
+            access: params.access,
+            files: params.files,
+            ...(params.writeApproved === undefined ? {} : { writeApproved: params.writeApproved }),
+            deliverable: params.deliverable ?? "child transcript",
+            keep: params.keep ?? false,
+            descendants:
+              params.access === "read"
+                ? "Do not launch descendants; ask the parent to route additional work."
+                : DEFAULT_DESCENDANTS,
+            ...(params.model ? { model: params.model } : {}),
+            ...(params.thinking ? { thinking: params.thinking as PiThinking } : {}),
+            checkout: (params.checkout ?? { kind: "current" }) as CheckoutRequest,
+            callerCwd: ctx.cwd,
+          },
+          ctx,
+        ),
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "loom_close",
+    label: "Loom Close",
+    description: "Retain or close one Pi Loom helper after owner integration",
+    parameters: Type.Object({
+      name: Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" }),
+      integrated: Type.Boolean(),
+      evidence: Type.Boolean(),
+      settled: Type.Boolean(),
+      pending: Type.Boolean(),
+      service: Type.Boolean(),
+      keep: Type.Optional(Type.Boolean({ default: false })),
+      execute: Type.Optional(Type.Boolean({ default: false })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      attachHelperDirectory(directory, ctx);
+      if (params.keep) {
+        const result = {
+          helperAlias: params.name,
+          action: "retain" as const,
+          reasons: ["requested-reuse"],
+        };
+        return {
+          content: [{ type: "text" as const, text: `Helper ${params.name}: retain` }],
+          details: result,
+        };
+      }
+      const result = await retirement.retire({
+        helperAlias: params.name,
+        callerPaneId: paneId,
+        semanticEvidence: {
+          reportIntegrated: params.integrated,
+          durableEvidence: params.evidence,
+          pendingApproval: params.pending,
+          pendingUserInput: params.pending,
+          queuedFollowup: params.pending,
+          runningService: params.service,
+          unresolvedBlocker: params.pending,
+          descendantsSettled: params.settled,
+        },
+        execute: params.execute ?? false,
+      });
+      return {
+        content: [
+          { type: "text" as const, text: `Helper ${result.helperAlias}: ${result.action}` },
+        ],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "loom_status",
+    label: "Loom Status",
+    description: "Show persistent Pi Loom helpers without exposing Herdr identities",
+    parameters: Type.Object({
+      name: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      attachHelperDirectory(directory, ctx);
+      const bindings = directory
+        .list()
+        .filter((binding) => (params.name ? binding.alias === params.name : true));
+      const helpers = await Promise.all(
+        bindings.map(async (binding) => {
+          try {
+            const agent = await herdr().getAgent(binding.alias);
+            return {
+              name: binding.alias,
+              state: agent.agentStatus,
+              checkout: binding.managedWorktree ? "managed-worktree" : "borrowed",
+            };
+          } catch {
+            return {
+              name: binding.alias,
+              state: "missing",
+              checkout: binding.managedWorktree ? "managed-worktree" : "borrowed",
+            };
+          }
+        }),
+      );
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              helpers.length === 0
+                ? "No persistent Pi Loom helpers"
+                : helpers
+                    .map((helper) => `${helper.name}: ${helper.state} (${helper.checkout})`)
+                    .join("\n"),
+          },
+        ],
+        details: { helpers },
+      };
+    },
+  });
+}
+
+export default registerLoomExtension;

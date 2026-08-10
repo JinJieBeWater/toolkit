@@ -1,0 +1,45 @@
+{
+  "name": "pi-loom",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Pi Loom ownership routing and persistent-helper mechanics for Herdr",
+  "license": "UNLICENSED",
+  "files": [
+    "src/herdr-adapter.ts",
+    "src/herdr-socket-transport.ts",
+    "src/skill-extension.ts",
+    "src/skill-launch.ts",
+    "src/skill-launch-executor.ts",
+    "src/skill-presentation.ts",
+    "src/skill-reporting.ts",
+    "src/skill-retirement.ts",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "check": "bun run check-types && bun test",
+    "pack:check": "npm pack --dry-run",
+    "verify:herdr-snapshot": "tsx scripts/verify-live-snapshot.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "24.12.4",
+    "tsx": "4.21.0",
+    "typebox": "1.1.38",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/skill-extension.ts"
+    ]
+  }
+}
