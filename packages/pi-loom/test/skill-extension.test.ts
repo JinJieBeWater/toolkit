@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import test from "node:test";
 import { childExecutionEnv, registerLoomExtension } from "../src/skill-extension.ts";
 import { HelperDirectory, helperBindingStorePath } from "../src/skill-launch-executor.ts";
@@ -422,6 +422,146 @@ test("child exposes Loom tools and reports canonical result", async () => {
   assert.equal(received.outcome, "Review complete.");
   assert.deepEqual(received.durablePointers, ["report.md"]);
   assert.deepEqual(received.verification, ["npm test"]);
+});
+
+test("loom_report stores long details in a private artifact", async (t) => {
+  const { pi, tools } = fakePi();
+  let received: any;
+  registerLoomExtension(pi as never, {
+    env: {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p2",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+      PI_HERDR_TASK_ID: "investigation",
+      PI_HERDR_PARENT_PANE_ID: "w1:p1",
+    },
+    retirement: retained,
+    reporting: {
+      deliver: async (input: unknown) => {
+        received = input;
+        return {
+          delivered: "primary" as const,
+          taskId: "investigation",
+          status: "COMPLETED" as const,
+        };
+      },
+    },
+  });
+
+  const details = "# Investigation\n\nFull evidence.";
+  const result = await tools.get("loom_report")!.execute("call-report", {
+    status: "COMPLETED",
+    summary: "Investigation complete.",
+    details,
+    pointers: ["issue.md"],
+    changed: [],
+    checks: ["bun test"],
+    next: "Parent integrate.",
+  });
+  t.after(() => rmSync(dirname(result.details.artifactPath), { recursive: true, force: true }));
+
+  assert.equal(isAbsolute(result.details.artifactPath), true);
+  assert.equal(readFileSync(result.details.artifactPath, "utf8"), details);
+  assert.equal(statSync(dirname(result.details.artifactPath)).mode & 0o777, 0o700);
+  assert.equal(statSync(result.details.artifactPath).mode & 0o777, 0o600);
+  assert.equal(received.outcome, "Investigation complete.");
+  assert.deepEqual(received.durablePointers, ["issue.md", result.details.artifactPath]);
+  assert.equal(result.content[0].text.includes(result.details.artifactPath), true);
+});
+
+test("loom_report does not deliver or deduplicate a failed artifact write", async (t) => {
+  const { pi, tools } = fakePi();
+  let deliveries = 0;
+  let unexpectedArtifactPath: string | undefined;
+  t.after(() => {
+    if (unexpectedArtifactPath) {
+      rmSync(dirname(unexpectedArtifactPath), { recursive: true, force: true });
+    }
+  });
+  registerLoomExtension(pi as never, {
+    env: {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p2",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+      PI_HERDR_TASK_ID: "review",
+      PI_HERDR_PARENT_PANE_ID: "w1:p1",
+    },
+    retirement: retained,
+    reportArtifactWriter: async () => {
+      throw new Error("disk full");
+    },
+    reporting: {
+      deliver: async (input: any) => {
+        deliveries += 1;
+        unexpectedArtifactPath = input.durablePointers.at(-1);
+        return { delivered: "primary" as const, taskId: "review", status: input.status };
+      },
+    },
+  });
+  const report = {
+    status: "COMPLETED",
+    summary: "Review complete.",
+    pointers: [],
+    changed: [],
+    checks: ["bun test"],
+    next: "Parent integrate.",
+  } as const;
+
+  await assert.rejects(
+    tools.get("loom_report")!.execute("call-report", { ...report, details: "# Full report" }),
+    /disk full/,
+  );
+  assert.equal(deliveries, 0);
+
+  await tools.get("loom_report")!.execute("call-report-retry", report);
+  assert.equal(deliveries, 1);
+});
+
+test("loom_report cleans its owned artifact when delivery fails and permits retry", async () => {
+  const { pi, tools } = fakePi();
+  let deliveries = 0;
+  let cleanups = 0;
+  registerLoomExtension(pi as never, {
+    env: {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p2",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+      PI_HERDR_TASK_ID: "review",
+      PI_HERDR_PARENT_PANE_ID: "w1:p1",
+    },
+    retirement: retained,
+    reportArtifactWriter: async () => ({
+      path: "/controlled/report.md",
+      cleanup: async () => {
+        cleanups += 1;
+      },
+    }),
+    reporting: {
+      deliver: async () => {
+        deliveries += 1;
+        if (deliveries === 1) throw new Error("parent unavailable");
+        return { delivered: "primary" as const, taskId: "review", status: "COMPLETED" as const };
+      },
+    },
+  });
+  const report = {
+    status: "COMPLETED",
+    summary: "Review complete.",
+    details: "# Full report",
+    pointers: [],
+    changed: [],
+    checks: ["bun test"],
+    next: "Parent integrate.",
+  } as const;
+
+  await assert.rejects(
+    tools.get("loom_report")!.execute("call-report", report),
+    /parent unavailable/,
+  );
+  assert.equal(cleanups, 1);
+
+  await tools.get("loom_report")!.execute("call-report-retry", report);
+  assert.equal(deliveries, 2);
 });
 
 test("loom_close maps owner checks to retirement evidence", async () => {

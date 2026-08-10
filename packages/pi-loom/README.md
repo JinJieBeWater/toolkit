@@ -16,12 +16,12 @@ Pi Loom 为 Herdr 中的多个 Pi 上下文提供所有权路由和持久 helper
 
 ## 工具
 
-| 工具          | 调用方 | 用途                                      |
-| ------------- | ------ | ----------------------------------------- |
-| `loom_start`  | owner  | 在当前、已有或新建 worktree 中启动 helper |
-| `loom_report` | child  | 向直接 owner 返回一次完成或阻塞报告       |
-| `loom_close`  | owner  | 验收后保留或关闭 helper                   |
-| `loom_status` | owner  | 查看 helper 状态，不向模型暴露 Herdr 身份 |
+| 工具          | 调用方 | 用途                                               |
+| ------------- | ------ | -------------------------------------------------- |
+| `loom_start`  | owner  | 在当前、已有或新建 worktree 中启动 helper          |
+| `loom_report` | child  | 向直接 owner 返回一次短报告；长结果落私有 artifact |
+| `loom_close`  | owner  | 验收后保留或关闭 helper                            |
+| `loom_status` | owner  | 查看 helper 状态，不向模型暴露 Herdr 身份          |
 
 `loom_start` 的 `checkout` 支持 `current`、`existing` 和 `worktree`；省略时使用当前 checkout。managed worktree 直接复用 Herdr 返回的 root pane，不创建空 tab：
 

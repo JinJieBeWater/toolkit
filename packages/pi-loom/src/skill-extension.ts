@@ -1,4 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Type, type Static } from "typebox";
 import { HERDR_PROTOCOL, HerdrAdapter } from "./herdr-adapter.ts";
 import { NodeHerdrSocketTransport } from "./herdr-socket-transport.ts";
@@ -53,12 +56,17 @@ type RetirementPort = {
     input: Parameters<SkillRetirementExecutor["retire"]>[0],
   ) => Promise<SkillRetirementResult>;
 };
+type ReportArtifact = {
+  path: string;
+  cleanup: () => Promise<void>;
+};
 export type LoomExtensionOptions = {
   env?: SkillExtensionEnvironment;
   extensionPath?: string;
   helperDirectory?: HelperDirectory;
   launchExecutor?: LaunchExecutorPort;
   reporting?: ReportingPort;
+  reportArtifactWriter?: (details: string) => Promise<ReportArtifact>;
   retirement?: RetirementPort;
 };
 
@@ -95,6 +103,24 @@ type CheckoutRequest = Static<typeof checkoutSchema>;
 
 const DEFAULT_DESCENDANTS =
   "May delegate within the assigned workstream and approved access boundary; remains responsible for descendant integration and settlement.";
+const MAX_REPORT_DETAILS_LENGTH = 1_048_576;
+
+async function writeReportArtifact(details: string): Promise<ReportArtifact> {
+  const directory = await mkdtemp(join(resolve(tmpdir()), "pi-loom-report-"));
+  try {
+    await chmod(directory, 0o700);
+    const path = join(directory, "report.md");
+    await writeFile(path, details, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    await chmod(path, 0o600);
+    return {
+      path,
+      cleanup: () => rm(directory, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
 
 export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOptions = {}): void {
   const env = options.env ?? process.env;
@@ -121,10 +147,14 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       executionEnv: childExecutionEnv(env),
     });
   const reporting = options.reporting ?? new SkillReportDelivery({ port: herdr() });
+  const reportArtifactWriter = options.reportArtifactWriter ?? writeReportArtifact;
   const retirement =
     options.retirement ?? new SkillRetirementExecutor({ herdr: herdr(), directory });
   const childRole = Boolean(env.PI_HERDR_PARENT_PANE_ID && env.PI_HERDR_TASK_ID);
-  const reportDeliveries = new Map<"COMPLETED" | "BLOCKED", Promise<SkillReportDeliveryResult>>();
+  const reportDeliveries = new Map<
+    "COMPLETED" | "BLOCKED",
+    Promise<{ result: SkillReportDeliveryResult; artifactPath?: string }>
+  >();
 
   const startPersistent = async (
     input: {
@@ -260,6 +290,7 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       parameters: Type.Object({
         status: Type.Union([Type.Literal("COMPLETED"), Type.Literal("BLOCKED")]),
         summary: Type.String({ minLength: 1 }),
+        details: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REPORT_DETAILS_LENGTH })),
         pointers: Type.Array(Type.String()),
         changed: Type.Array(Type.String()),
         checks: Type.Array(Type.String(), { minItems: 1 }),
@@ -274,18 +305,27 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
             details: { delivered: "duplicate", taskId: env.PI_HERDR_TASK_ID },
           };
         }
-        const delivery = deliverReport({
-          status: params.status,
-          outcome: params.summary,
-          durablePointers: params.pointers,
-          changed: params.changed,
-          verification: params.checks,
-          needNext: params.next,
-        });
+        const delivery = (async () => {
+          const artifact = params.details ? await reportArtifactWriter(params.details) : undefined;
+          try {
+            const result = await deliverReport({
+              status: params.status,
+              outcome: params.summary,
+              durablePointers: artifact ? [...params.pointers, artifact.path] : params.pointers,
+              changed: params.changed,
+              verification: params.checks,
+              needNext: params.next,
+            });
+            return { result, ...(artifact ? { artifactPath: artifact.path } : {}) };
+          } catch (error) {
+            await artifact?.cleanup();
+            throw error;
+          }
+        })();
         reportDeliveries.set(params.status, delivery);
-        let result: SkillReportDeliveryResult;
+        let delivered: { result: SkillReportDeliveryResult; artifactPath?: string };
         try {
-          result = await delivery;
+          delivered = await delivery;
         } catch (error) {
           if (reportDeliveries.get(params.status) === delivery) {
             reportDeliveries.delete(params.status);
@@ -294,9 +334,16 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         }
         return {
           content: [
-            { type: "text" as const, text: `Report delivered through ${result.delivered}` },
+            {
+              type: "text" as const,
+              text: delivered.artifactPath
+                ? `Report delivered through ${delivered.result.delivered}\nArtifact: ${delivered.artifactPath}`
+                : `Report delivered through ${delivered.result.delivered}`,
+            },
           ],
-          details: result,
+          details: delivered.artifactPath
+            ? { ...delivered.result, artifactPath: delivered.artifactPath }
+            : delivered.result,
         };
       },
     });

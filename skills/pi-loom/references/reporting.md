@@ -27,7 +27,11 @@ Local HITL completes when the question is visible in child pane and child remain
 
 ## Report terminal state
 
-With Loom tools available, child calls `loom_report` once after durable output and verification. Manual fallback calls `herdr_agent` with action `prompt`, bound parent target, report as `prompt`, and `wait=false` as final tool action before final response. Report exactly once for each transition to `COMPLETED` or parent-action `BLOCKED`:
+With Loom tools available, child calls `loom_report` once after durable output and verification. Keep `summary`, pointers, changed files, checks, and next action short. For a review, investigation, or other long result, pass up to 1 MiB of complete non-empty Markdown as optional `details`; the extension writes it to a unique private directory under the system temporary directory as `report.md`, adds its absolute path to durable pointers, then delivers the short canonical report. Short status reports omit `details` and retain the existing inline behavior.
+
+The artifact directory has mode `0700`; `report.md` has mode `0600`. If artifact creation or writing fails, `loom_report` throws, sends no report, and permits a retry. If delivery fails after writing, the extension removes only that writer-owned directory and permits a retry. A successful tool result includes the artifact path in both structured details and visible content so the child pane retains a recovery pointer.
+
+Manual fallback calls `herdr_agent` with action `prompt`, bound parent target, report as `prompt`, and `wait=false` as final tool action before final response. Before launching a manual helper expected to return a long result, parent allocates a mode `0700` temporary directory and private Markdown path. Child writes a sibling temporary file with mode `0600`, renames it atomically to that path, and sends only short status plus the absolute path. Report exactly once for each transition to `COMPLETED` or parent-action `BLOCKED`:
 
 ```text
 [Herdr child report][<task-id>][COMPLETED|BLOCKED]
@@ -45,6 +49,6 @@ Use `BLOCKED` for a blocker requiring parent action. User decisions stay local. 
 
 ## Delivery fallback
 
-Send to primary once. If target is missing, send the same report to coordinator fallback. If structured tools are unavailable but shell exists, use the loaded `herdr` authority's CLI fallback. If both targets are missing, preserve the full report in child transcript and final response.
+Send to primary once. If target is missing, send the same report to coordinator fallback. If structured tools are unavailable but shell exists, use the loaded `herdr` authority's CLI fallback. If both targets are missing, preserve the short report and artifact path in child transcript and final response.
 
 Keep child pane open until parent integrates result. Delivery completes when Herdr accepts the report, or the intact child transcript preserves it for reconciliation.

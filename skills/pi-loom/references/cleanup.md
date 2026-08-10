@@ -35,3 +35,7 @@ Selection completes when exactly one executor owns the retirement attempt.
 4. Report closed pane IDs/labels and every retained pane with reason.
 
 Standing authorization covers automatic closure only for workflow-owned panes satisfying every condition. Retirement completes when all eligible panes are absent, live agents retain prior states, and remaining panes have usable geometry.
+
+## Remove temporary report artifacts
+
+After owner verifies and integrates a report, remove its Pi Loom temporary artifact directory. If the result must outlive integration, first move the Markdown into a durable project or user-approved location, update the durable pointer, then remove the temporary directory. Do not retain system-temporary paths as long-term evidence.

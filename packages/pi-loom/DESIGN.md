@@ -36,3 +36,5 @@
 3. terminal report delivery
 4. helper 与 owned checkout retirement
 5. canonical `pi-loom` Skill
+
+terminal report 保持短小；review、investigation 等长结果先写入私有临时 Markdown artifact，canonical report 只携带 durable pointer。artifact 写入失败时不得开始 delivery；delivery 失败时仅清理该次受控 artifact，并允许重试。
