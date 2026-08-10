@@ -1,14 +1,14 @@
 # Spencer Agent Toolkit
 
-个人 Agent 工具集合。目前包含 Pi Loom、Moshi + Herdr Android 手机远程和 Lark Skill；另附[我的 Pi 扩展清单](docs/pi-extensions.md)，记录当前 packages、启用状态和恢复方式。
+个人 Agent 工具集合。目前包含 Pi Loom、Moshi + Herdr 移动端远程接入和 Lark Skill；另附[我的 Pi 扩展清单](docs/pi-extensions.md)，记录当前 packages、启用状态和恢复方式。
 
 ## 怎么选
 
-| 需求                                         | 选择                 |
-| -------------------------------------------- | -------------------- |
-| 在 Herdr 中让多个 Pi 分工，并保留辅助上下文  | Pi Loom              |
-| 从 Android 持续操作 Mac 上的受支持 CLI Agent | `moshi-herdr-remote` |
-| 操作飞书消息、文档、云盘、日历等工作区能力   | `lark` Skill         |
+| 需求                                                                     | 选择                 |
+| ------------------------------------------------------------------------ | -------------------- |
+| 在 Herdr 中让多个 Pi 分工，并保留辅助上下文                              | Pi Loom              |
+| 从支持 EasyTier 私网与 Moshi 的移动设备持续操作 Mac 上的受支持 CLI Agent | `moshi-herdr-remote` |
+| 操作飞书消息、文档、云盘、日历等工作区能力                               | `lark` Skill         |
 
 安装工具无需手动 clone 仓库；安装命令会自行下载。
 
@@ -40,9 +40,9 @@ pi install git:github.com/JinJieBeWater/toolkit
 
 实现与开发说明见 [`packages/pi-loom/README.md`](packages/pi-loom/README.md)。
 
-## Moshi + Herdr Android 手机远程
+## Moshi + Herdr 移动端远程接入
 
-`moshi-herdr-remote` 提供一条完整配置路径：安装主机工具、建立 EasyTier 私网、配对 Moshi、启用 Herdr 持久会话、启动受 Herdr 与 Moshi 支持的 CLI Agent，再从 Android 完成断线重连验收。默认 Agent 为 Pi。
+`moshi-herdr-remote` 提供一条完整配置路径：安装主机工具、建立 EasyTier 私网、配对 Moshi、启用 Herdr 持久会话、启动受 Herdr 与 Moshi 支持的 CLI Agent，再从移动端完成断线重连验收。移动设备需支持 EasyTier 私网与 Moshi；仓库内的 Android 步骤仅是已验证的 EasyTier 客户端示例。默认 Agent 为 Pi。
 
 ```bash
 bunx skills add https://github.com/JinJieBeWater/toolkit --skill moshi-herdr-remote -g

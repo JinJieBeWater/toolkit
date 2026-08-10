@@ -5,7 +5,7 @@
 ## 1. EasyTier Pro 控制台
 
 - 在 easytier.net 注册并创建网络；地址范围和区域使用控制台当前默认值或选择离设备最近的可用区域
-- 设备管理：每台设备**独立密钥**（`etk_...`），Mac 与手机各一，勿共用
+- 设备管理：每台设备**独立密钥**（`etk_...`），Mac 与移动设备各一，勿共用
 - 网络页**挂载设备**到网络
 
 **完成标准**：控制台「已挂载实例」> 0，且每台设备显示「已授权」。
@@ -76,9 +76,11 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/com.easytier.moshi-net.pl
 
 **用户态 LaunchAgent 不可行**：TUN 需 root，报 `tun device error: Operation not permitted (os error 1)`。
 
-## 3. Android（官方 APK）
+## 3. 移动端（Android 已验证示例）
 
-从 [EasyTier v2.6.4 release](https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4) 下载 `app-arm64-release.apk`，与 Mac 端保持同版本。下面是已验证的 EasyTier Pro Android 导入格式；导入后 App 自动补 `instance_name`、`instance_id` 和 `dhcp`：
+移动设备需支持 EasyTier 私网与 Moshi。以下 EasyTier 客户端安装和排障步骤仅为 Android 已验证示例，不代表其他平台的具体支持或安装方式。
+
+Android 从 [EasyTier v2.6.4 release](https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4) 下载 `app-arm64-release.apk`，与 Mac 端保持同版本。下面是已验证的 EasyTier Pro Android 导入格式；导入后 App 自动补 `instance_name`、`instance_id` 和 `dhcp`：
 
 ```toml
 hostname = "<PHONE_HOSTNAME>"
@@ -92,10 +94,10 @@ network_secret = "<PHONE_ETK>"
 
 启动后：安卓设置把 EasyTier **电池/后台限制设为不限制**（杀后台 → mesh 掉线 → 终端报连接错误）。
 
-**完成标准**：Mac 侧 `easytier-cli -p 127.0.0.1:15888 peer` 出现手机节点；`p2p ... udp` 表示打洞直连，`relay`/`https-udp` 表示兜底中继。
+**完成标准**：Mac 侧 `easytier-cli -p 127.0.0.1:15888 peer` 出现移动设备节点；`p2p ... udp` 表示打洞直连，`relay`/`https-udp` 表示兜底中继。
 
 ## Verification（最终）
 
-1. `easytier-cli -p 127.0.0.1:15888 peer`：本机与手机节点都存在
+1. `easytier-cli -p 127.0.0.1:15888 peer`：本机与移动设备节点都存在
 2. `launchctl print system/com.easytier.moshi-net` running；重启 Mac 后自启
-3. 手机 App VPN 亮、电池不限制；手机重连后 peer 自动恢复
+3. 移动设备重连后 peer 自动恢复。Android 已验证示例：App VPN 亮、电池不限制
