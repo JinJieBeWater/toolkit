@@ -187,6 +187,33 @@ function managedLaunch(cwd: string, workstreamLabel = "auth-fix") {
   });
 }
 
+function targetLaunchAfter(before: HerdrSnapshot, workspaceId = "w2"): HerdrSnapshot {
+  const after = snapshot();
+  after.workspaces = before.workspaces;
+  after.tabs = [
+    ...(after.tabs as object[]),
+    { tab_id: `${workspaceId}:t2`, workspace_id: workspaceId, label: "auth-fix" },
+  ];
+  after.panes = [
+    ...(after.panes as object[]),
+    {
+      pane_id: `${workspaceId}:p2`,
+      workspace_id: workspaceId,
+      tab_id: `${workspaceId}:t2`,
+      label: "writer",
+    },
+  ];
+  after.layouts = [
+    ...(after.layouts as object[]),
+    {
+      workspace_id: workspaceId,
+      tab_id: `${workspaceId}:t2`,
+      panes: [{ pane_id: `${workspaceId}:p2`, rect: { width: 120, height: 40 } }],
+    },
+  ];
+  return after;
+}
+
 test("helper directory survives reload and persists removal", (t) => {
   const temporary = mkdtempSync(join(tmpdir(), "pi-herdr-helper-bindings-"));
   t.after(() => rmSync(temporary, { recursive: true, force: true }));
@@ -433,6 +460,177 @@ test("launch executor opens a tab only in the exact target checkout workspace", 
     paneId: "w2:p2",
     tabId: "w2:t2",
   });
+});
+
+test("launch executor recognizes an ordinary workspace by pane cwd", async (t) => {
+  const { source, target } = managedCheckouts(t, "pi-herdr-ordinary-workspace-");
+  const before = snapshot();
+  before.workspaces = [
+    { workspace_id: "w1", worktree: { checkout_path: realpathSync(source) } },
+    { workspace_id: "w2" },
+  ];
+  before.panes = [
+    ...(before.panes as object[]),
+    { pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1", cwd: target },
+    { pane_id: "w2:p2", workspace_id: "w2", tab_id: "w2:t1" },
+    {
+      pane_id: "w2:p3",
+      workspace_id: "w2",
+      tab_id: "w2:t1",
+      cwd: join(dirname(target), "missing"),
+    },
+  ];
+  const herdr = new FakeHerdr([before, targetLaunchAfter(before)], {
+    kind: "started",
+    paneId: "w2:p2",
+    terminalId: "term_helper",
+    agentStatus: "idle",
+  });
+  const executor = new SkillLaunchExecutor({ herdr, directory: new HelperDirectory() });
+
+  const result = await executor.execute({
+    helperAlias: "target-writer",
+    callerPaneId: "w1:p1",
+    callerCwd: source,
+    launch: managedLaunch(target),
+  });
+
+  assert.deepEqual(
+    result.kind === "rejected" ? { kind: result.kind, code: result.code } : { kind: result.kind },
+    { kind: "started" },
+  );
+  assert.equal(herdr.tabInput?.workspaceId, "w2");
+});
+
+test("launch executor canonicalizes an ordinary workspace pane subdirectory", async (t) => {
+  const { source, target } = managedCheckouts(t, "pi-herdr-ordinary-subdirectory-");
+  const nested = join(target, "nested");
+  mkdirSync(nested);
+  const before = snapshot();
+  before.workspaces = [
+    { workspace_id: "w1", worktree: { checkout_path: realpathSync(source) } },
+    { workspace_id: "w2" },
+  ];
+  before.panes = [
+    ...(before.panes as object[]),
+    {
+      pane_id: "w2:p1",
+      workspace_id: "w2",
+      tab_id: "w2:t1",
+      foreground_cwd: nested,
+      cwd: source,
+    },
+  ];
+  const herdr = new FakeHerdr([before, targetLaunchAfter(before)], {
+    kind: "started",
+    paneId: "w2:p2",
+    terminalId: "term_helper",
+    agentStatus: "idle",
+  });
+  const executor = new SkillLaunchExecutor({ herdr, directory: new HelperDirectory() });
+
+  const result = await executor.execute({
+    helperAlias: "nested-writer",
+    callerPaneId: "w1:p1",
+    callerCwd: source,
+    launch: managedLaunch(target),
+  });
+
+  assert.equal(result.kind, "started");
+  assert.equal(herdr.tabInput?.workspaceId, "w2");
+});
+
+test("launch executor rejects an ordinary workspace spanning multiple checkouts", async (t) => {
+  const { source, target } = managedCheckouts(t, "pi-herdr-mixed-workspace-");
+  const foreign = join(dirname(target), "foreign");
+  mkdirSync(foreign);
+  execFileSync("git", ["init", "-q", foreign]);
+  const before = snapshot();
+  before.workspaces = [
+    { workspace_id: "w1", worktree: { checkout_path: realpathSync(source) } },
+    { workspace_id: "w2" },
+  ];
+  before.panes = [
+    ...(before.panes as object[]),
+    { pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1", cwd: target },
+    { pane_id: "w2:p2", workspace_id: "w2", tab_id: "w2:t1", cwd: foreign },
+  ];
+  const herdr = new FakeHerdr([before], { kind: "failed", reason: "must not launch" });
+  const executor = new SkillLaunchExecutor({ herdr, directory: new HelperDirectory() });
+
+  const result = await executor.execute({
+    helperAlias: "target-writer",
+    callerPaneId: "w1:p1",
+    callerCwd: source,
+    launch: managedLaunch(target),
+  });
+
+  assert.equal(result.kind, "rejected");
+  if (result.kind !== "rejected") assert.fail("expected rejection");
+  assert.equal(result.code, "CHECKOUT_WORKSPACE_REQUIRED");
+  assert.deepEqual(herdr.calls, ["snapshot"]);
+});
+
+test("launch executor rejects multiple ordinary workspaces for the target checkout", async (t) => {
+  const { source, target } = managedCheckouts(t, "pi-herdr-duplicate-workspaces-");
+  const before = snapshot();
+  before.workspaces = [
+    { workspace_id: "w1", worktree: { checkout_path: realpathSync(source) } },
+    { workspace_id: "w2" },
+    { workspace_id: "w3" },
+  ];
+  before.panes = [
+    ...(before.panes as object[]),
+    { pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1", cwd: target },
+    { pane_id: "w3:p1", workspace_id: "w3", tab_id: "w3:t1", cwd: target },
+  ];
+  const herdr = new FakeHerdr([before], { kind: "failed", reason: "must not launch" });
+  const executor = new SkillLaunchExecutor({ herdr, directory: new HelperDirectory() });
+
+  const result = await executor.execute({
+    helperAlias: "target-writer",
+    callerPaneId: "w1:p1",
+    callerCwd: source,
+    launch: managedLaunch(target),
+  });
+
+  assert.equal(result.kind, "rejected");
+  if (result.kind !== "rejected") assert.fail("expected rejection");
+  assert.equal(result.code, "CHECKOUT_WORKSPACE_REQUIRED");
+  assert.deepEqual(herdr.calls, ["snapshot"]);
+});
+
+test("launch executor prefers explicit workspace checkout identity over conflicting pane cwd", async (t) => {
+  const { source, target } = managedCheckouts(t, "pi-herdr-explicit-workspace-");
+  const foreign = join(dirname(target), "foreign");
+  mkdirSync(foreign);
+  execFileSync("git", ["init", "-q", foreign]);
+  const before = snapshot();
+  before.workspaces = [
+    { workspace_id: "w1", worktree: { checkout_path: realpathSync(source) } },
+    { workspace_id: "w2", worktree: { checkout_path: target } },
+  ];
+  before.panes = [
+    ...(before.panes as object[]),
+    { pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1", cwd: foreign },
+  ];
+  const herdr = new FakeHerdr([before, targetLaunchAfter(before)], {
+    kind: "started",
+    paneId: "w2:p2",
+    terminalId: "term_helper",
+    agentStatus: "idle",
+  });
+  const executor = new SkillLaunchExecutor({ herdr, directory: new HelperDirectory() });
+
+  const result = await executor.execute({
+    helperAlias: "target-writer",
+    callerPaneId: "w1:p1",
+    callerCwd: source,
+    launch: managedLaunch(target),
+  });
+
+  assert.equal(result.kind, "started");
+  assert.equal(herdr.tabInput?.workspaceId, "w2");
 });
 
 test("launch executor creates a managed worktree and uses its root pane", async (t) => {

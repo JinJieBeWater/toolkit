@@ -360,12 +360,26 @@ function workspaceCheckout(snapshot: HerdrSnapshot, workspaceId: string): string
     .map(record)
     .find((candidate) => candidate?.workspace_id === workspaceId);
   const worktree = record(workspace?.worktree);
-  if (typeof worktree?.checkout_path !== "string") return undefined;
-  try {
-    return realpathSync(worktree.checkout_path);
-  } catch {
-    return undefined;
+  if (typeof worktree?.checkout_path === "string") {
+    try {
+      return realpathSync(worktree.checkout_path);
+    } catch {
+      return undefined;
+    }
   }
+  const checkouts = new Set<string>();
+  for (const pane of snapshot.panes.map(record)) {
+    if (pane?.workspace_id !== workspaceId) continue;
+    const cwd =
+      typeof pane.foreground_cwd === "string"
+        ? pane.foreground_cwd
+        : typeof pane.cwd === "string"
+          ? pane.cwd
+          : undefined;
+    const checkout = cwd ? checkoutPath(cwd) : undefined;
+    if (checkout) checkouts.add(checkout);
+  }
+  return checkouts.size === 1 ? checkouts.values().next().value : undefined;
 }
 
 export class SkillLaunchExecutor {
@@ -459,17 +473,23 @@ export class SkillLaunchExecutor {
         (callerWorkspaceCheckout
           ? callerWorkspaceCheckout === targetCheckout
           : callerCheckout === targetCheckout);
+    const matchingWorkspaceIds =
+      managedWorktree || targetUsesCallerWorkspace || !targetCheckout
+        ? []
+        : before.workspaces.flatMap((value) => {
+            const workspace = record(value);
+            return typeof workspace?.workspace_id === "string" &&
+              workspaceCheckout(before, workspace.workspace_id) === targetCheckout
+              ? [workspace.workspace_id]
+              : [];
+          });
     const targetWorkspaceId =
       managedWorktree?.workspaceId ??
       (targetUsesCallerWorkspace || !targetCheckout
         ? undefined
-        : (before.workspaces
-            .map(record)
-            .find(
-              (candidate) =>
-                typeof candidate?.workspace_id === "string" &&
-                workspaceCheckout(before, candidate.workspace_id) === targetCheckout,
-            )?.workspace_id as string | undefined));
+        : matchingWorkspaceIds.length === 1
+          ? matchingWorkspaceIds[0]
+          : undefined);
     if (!targetUsesCallerWorkspace && !targetWorkspaceId) {
       return {
         kind: "rejected",

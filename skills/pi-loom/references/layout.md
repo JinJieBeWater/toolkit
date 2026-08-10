@@ -8,6 +8,8 @@ A usable agent pane is at least 80 columns by 24 rows unless the user chooses de
 
 Canonicalize each Git checkout with exact checkout realpath. Same repository with a different worktree is a different checkout.
 
+Use explicit Herdr worktree checkout identity when present. For an ordinary workspace, resolve each available pane `foreground_cwd` or `cwd` through Git top-level and realpath; accept the workspace only when all resolvable panes identify one checkout. Ignore panes without a usable Git cwd. Require exactly one workspace for the target checkout; reject missing, mixed-checkout, or duplicate matches before mutation. Do not match by repository identity.
+
 `current` and `existing` checkout leases are borrowed. A `worktree` lease is owned by Pi Loom: Herdr creates its workspace without focus, and Loom starts the helper in the confirmed root pane.
 
 - same checkout and same workstream: sibling pane;
@@ -15,7 +17,7 @@ Canonicalize each Git checkout with exact checkout realpath. Same repository wit
 - different checkout helper: new tab in the matching workspace;
 - managed worktree helper: confirmed root pane in the newly created workspace;
 - current owner continuing persistent work in a different checkout: Transfer;
-- no exact workspace match: stop before layout mutation, open the target checkout through loaded `herdr`, then retry.
+- no unique exact workspace match: stop before layout mutation, open or disambiguate the target checkout through loaded `herdr`, then retry.
 
 Never create a target-checkout tab in the caller workspace when checkout affinity differs.
 

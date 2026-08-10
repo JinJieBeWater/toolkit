@@ -44,7 +44,7 @@ Define task, checkout, workstream, role, read/write access, allowed files, deliv
 
 4. After terminal integration, read [cleanup.md](cleanup.md), classify every condition, then call `loom_close` once. `reconcile` stops mutation until live state is inspected.
 
-If an `existing` checkout has no matching workspace, open it with loaded `herdr`, then retry once. A rejection or pre-send failure may use the manual branch; ambiguous mutation stays reconcile.
+If an `existing` checkout has no matching workspace, open it with loaded `herdr`, then retry once. Loom recognizes an ordinary workspace from its unambiguous pane Git cwd; mixed-checkout or duplicate matches must be disambiguated first. A rejection or pre-send failure may use the manual branch; ambiguous mutation stays reconcile.
 
 ## Manual persistent branch
 

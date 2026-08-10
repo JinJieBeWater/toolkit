@@ -38,3 +38,5 @@
 5. canonical `pi-loom` Skill
 
 terminal report 保持短小；review、investigation 等长结果先写入私有临时 Markdown artifact，canonical report 只携带 durable pointer。artifact 写入失败时不得开始 delivery；delivery 失败时仅清理该次受控 artifact，并允许重试。
+
+checkout workspace identity 优先使用 Herdr 显式 worktree checkout；普通 workspace 仅在其所有可解析 pane cwd 归一到同一 Git checkout 时采用 fallback。target checkout 必须唯一匹配一个 workspace，歧义时在 mutation 前拒绝。
