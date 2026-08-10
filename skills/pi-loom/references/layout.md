@@ -51,10 +51,11 @@ Planning completes when every involved pane has one target tab, neighbor, and pr
 ## Build or reflow
 
 1. Apply normal topology through `loom_start`; otherwise use loaded `herdr` authority while preserving foreground context. Ask before moving the foreground pane.
-2. Read identities from mutation responses and treat them as opaque.
-3. When the existing split tree cannot express the target, rebuild the related workstream in a fresh background tab rather than disturbing unrelated panes.
-4. Keep parent pane available until every descendant result is integrated.
-5. Tell a Pi that may add descendants to preserve workstream locality and apply this reference before splitting.
+2. `workspace_create` may return a numeric/default root tab. In the manual branch, rename that exact tab to the workstream before starting an agent in its root pane; keep project identity on the workspace and role identity on the agent/pane.
+3. Read identities from mutation responses and treat them as opaque.
+4. When the existing split tree cannot express the target, rebuild the related workstream in a fresh background tab rather than disturbing unrelated panes.
+5. Keep parent pane available until every descendant result is integrated.
+6. Tell a Pi that may add descendants to preserve workstream locality and apply this reference before splitting.
 
 Reflow completes when every intended mutation succeeds and each running process retains session and state.
 
@@ -65,7 +66,7 @@ Re-read affected tab lists, pane lists, and layouts. Confirm:
 - related panes are neighbors in one workstream tab;
 - independent workstreams occupy separate tabs;
 - every agent TUI is usable;
-- labels, cwd, and agent states survived;
+- labels, cwd, and agent states survived, with no workflow-owned blank, numeric, or default tab labels;
 - foreground tab/pane matches recorded context.
 
 Repair failed checks before reporting completion. Report final grouping, not only mutation commands.

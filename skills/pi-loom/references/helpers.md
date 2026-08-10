@@ -48,7 +48,7 @@ If an `existing` checkout has no matching workspace, open it with loaded `herdr`
 
 ## Manual persistent branch
 
-Use only when Loom tools are unavailable or evidence proves no Loom mutation occurred. Read [reporting.md](reporting.md) and [layout.md](layout.md), then start and label one Pi through loaded `herdr`. Preserve target checkout affinity, foreground context, write approval, return channel, and event-driven wait. Finish through [cleanup.md](cleanup.md).
+Use only when Loom tools are unavailable or evidence proves no Loom mutation occurred. Read [reporting.md](reporting.md) and [layout.md](layout.md). Before starting Pi in a workspace root pane, rename any blank, numeric, or default root tab to the bounded workstream; the agent name carries the role. Then start one Pi through loaded `herdr` and verify workspace, tab label, pane cwd, and agent name from live state. Preserve target checkout affinity, foreground context, write approval, return channel, and event-driven wait. Finish through [cleanup.md](cleanup.md).
 
 ## Finite subagent branch
 
