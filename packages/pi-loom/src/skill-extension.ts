@@ -218,6 +218,7 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         callerPaneId: paneId,
         callerCwd: input.callerCwd,
         launch,
+        ...(input.keep ? { reuseRole: input.role } : {}),
         ...(input.checkout.kind === "worktree"
           ? {
               worktree: {
@@ -407,15 +408,17 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       pending: Type.Boolean(),
       service: Type.Boolean(),
       keep: Type.Optional(Type.Boolean({ default: false })),
+      release: Type.Optional(Type.Boolean({ default: false })),
       execute: Type.Optional(Type.Boolean({ default: false })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       attachHelperDirectory(directory, ctx);
-      if (params.keep) {
+      const reuseRole = directory.resolve(params.name)?.reuseRole;
+      if (params.keep || (reuseRole && params.release !== true)) {
         const result = {
           helperAlias: params.name,
           action: "retain" as const,
-          reasons: ["requested-reuse"],
+          reasons: [params.keep ? "requested-reuse" : `sticky-retention:${reuseRole}`],
         };
         return {
           content: [{ type: "text" as const, text: `Helper ${params.name}: retain` }],

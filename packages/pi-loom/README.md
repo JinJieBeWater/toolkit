@@ -20,7 +20,7 @@ Pi Loom 为 Herdr 中的多个 Pi 上下文提供所有权路由和持久 helper
 | ------------- | ------ | -------------------------------------------------- |
 | `loom_start`  | owner  | 在当前、已有或新建 worktree 中启动 helper          |
 | `loom_report` | child  | 向直接 owner 返回一次短报告；长结果落私有 artifact |
-| `loom_close`  | owner  | 验收后保留或关闭 helper                            |
+| `loom_close`  | owner  | 验收后保留或显式释放 helper                        |
 | `loom_status` | owner  | 查看 helper 状态，不向模型暴露 Herdr 身份          |
 
 `loom_start` 的 `checkout` 支持 `current`、`existing` 和 `worktree`；省略时使用当前 checkout。managed worktree 直接复用 Herdr 返回的 root pane，不创建空 tab：
@@ -42,6 +42,8 @@ Pi Loom 为 Herdr 中的多个 Pi 上下文提供所有权路由和持久 helper
 ```
 
 已有 checkout 是 borrowed，关闭 helper 时保留；Loom 创建的 worktree 是 owned，`loom_close` 验收后通过 `worktree.remove(force=false)` 回收。dirty、共享或身份不确定时保留现场并返回 `reconcile`。所有 mutation 不确定性都由 owner 检查 live state。
+
+review、interactive 或 reusable helper 用 `loom_start keep:true`。该策略随 session binding 持久化；`COMPLETED` 后 `loom_close` 仍默认 retain，owner 仅在 workstream 真正释放时传 `release:true`。单次 `loom_close keep:true` 继续作为兼容的 retain override。
 
 ## 运行条件
 

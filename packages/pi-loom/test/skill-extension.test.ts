@@ -325,6 +325,105 @@ test("loom_start binds helper to current Pi session", async (t) => {
   );
 });
 
+test("loom_start persists sticky retention until loom_close explicitly releases it", async (t) => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi-loom-sticky-session-"));
+  t.after(() => rmSync(temporary, { recursive: true, force: true }));
+  const sessionFile = join(temporary, "parent.jsonl");
+  const storePath = helperBindingStorePath(sessionFile);
+  const directory = new HelperDirectory();
+  const { pi, tools } = fakePi();
+  registerLoomExtension(pi as never, {
+    env: {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p1",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+    },
+    helperDirectory: directory,
+    launchExecutor: {
+      execute: async (input: any) => {
+        directory.bind("reviewer", "w1:p2", "term_helper", undefined, input.reuseRole);
+        return {
+          kind: "started" as const,
+          helperAlias: "reviewer",
+          agentStatus: "working",
+          placement: {
+            kind: "sibling" as const,
+            split: "right" as const,
+            size: "100x50",
+            focusPreserved: true as const,
+          },
+          configuration: { model: "default", thinking: "default" },
+          presentation: { workstreamLabel: "review", roleLabel: "reviewer" },
+        };
+      },
+    },
+    retirement: retained,
+  });
+
+  await tools.get("loom_start")!.execute(
+    "call-start",
+    {
+      name: "reviewer",
+      task: "Review.",
+      workstream: "review",
+      role: "reviewer",
+      access: "read",
+      files: ["src/**"],
+      keep: true,
+    },
+    undefined,
+    undefined,
+    { cwd: "/repo", sessionManager: { getSessionFile: () => sessionFile } },
+  );
+
+  const reloaded = new HelperDirectory({ path: storePath });
+  assert.equal(reloaded.resolve("reviewer")?.reuseRole, "reviewer");
+
+  let retirements = 0;
+  const close = fakePi();
+  registerLoomExtension(close.pi as never, {
+    env: {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p1",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+    },
+    helperDirectory: reloaded,
+    launchExecutor: {
+      execute: async () => {
+        throw new Error("must not launch");
+      },
+    },
+    retirement: {
+      retire: async () => {
+        retirements += 1;
+        return { helperAlias: "reviewer", action: "closed" as const, reasons: [] };
+      },
+    },
+  });
+  const closeParams = {
+    name: "reviewer",
+    integrated: true,
+    evidence: true,
+    settled: true,
+    pending: false,
+    service: false,
+    execute: true,
+  };
+  const context = { cwd: "/repo", sessionManager: { getSessionFile: () => sessionFile } };
+
+  const retainedResult = await close.tools
+    .get("loom_close")!
+    .execute("call-close", closeParams, undefined, undefined, context);
+  assert.equal(retainedResult.details.action, "retain");
+  assert.equal(retirements, 0);
+
+  const releasedResult = await close.tools
+    .get("loom_close")!
+    .execute("call-release", { ...closeParams, release: true }, undefined, undefined, context);
+  assert.equal(releasedResult.details.action, "closed");
+  assert.equal(retirements, 1);
+});
+
 test("loom_start rejects invalid helper name before launch", async () => {
   const { pi, tools } = fakePi();
   let launched = false;
@@ -567,6 +666,7 @@ test("loom_report cleans its owned artifact when delivery fails and permits retr
 test("loom_close maps owner checks to retirement evidence", async () => {
   const { pi, tools } = fakePi();
   let received: any;
+  let retirements = 0;
   registerLoomExtension(pi as never, {
     env: {
       HERDR_ENV: "1",
@@ -583,11 +683,31 @@ test("loom_close maps owner checks to retirement evidence", async () => {
     } as never,
     retirement: {
       retire: async (input: unknown) => {
+        retirements += 1;
         received = input;
         return { helperAlias: "reviewer", action: "closed" as const, reasons: [] };
       },
     },
   });
+
+  const kept = await tools.get("loom_close")!.execute(
+    "call-keep",
+    {
+      name: "reviewer",
+      integrated: true,
+      evidence: true,
+      settled: true,
+      pending: false,
+      service: false,
+      keep: true,
+      execute: true,
+    },
+    undefined,
+    undefined,
+    { cwd: "/repo", sessionManager: { getSessionFile: () => undefined } },
+  );
+  assert.equal(kept.details.action, "retain");
+  assert.equal(retirements, 0);
 
   await tools.get("loom_close")!.execute(
     "call-close",
@@ -605,6 +725,7 @@ test("loom_close maps owner checks to retirement evidence", async () => {
     { cwd: "/repo", sessionManager: { getSessionFile: () => undefined } },
   );
 
+  assert.equal(retirements, 1);
   assert.deepEqual(received.semanticEvidence, {
     reportIntegrated: true,
     durableEvidence: true,

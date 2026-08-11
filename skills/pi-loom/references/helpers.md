@@ -28,7 +28,7 @@ Escalate Flash → Terra when evidence conflicts, validation fails, or scope gai
 
 ## Bound the contribution
 
-Define task, checkout, workstream, role, read/write access, allowed files, deliverable, and reuse choice. Omit checkout for current, use `existing` with an exact path, or use `worktree` with an explicit branch and optional base/path. Read-only work may start automatically, but a read-only persistent helper cannot launch descendants; ask its parent to route more work. Write access requires user approval naming task and file boundary; concurrent writers use managed worktrees. Pass the selected `model` and `thinking` to `loom_start`.
+Define task, checkout, workstream, role, read/write access, allowed files, deliverable, and reuse choice. Omit checkout for current, use `existing` with an exact path, or use `worktree` with an explicit branch and optional base/path. Use `keep:true` for review, interactive, or reusable helpers. Read-only work may start automatically, but a read-only persistent helper cannot launch descendants; ask its parent to route more work. Write access requires user approval naming task and file boundary; concurrent writers use managed worktrees. Pass the selected `model` and `thinking` to `loom_start`.
 
 ## Persistent helper branch
 
@@ -39,10 +39,10 @@ Define task, checkout, workstream, role, read/write access, allowed files, deliv
    | State                            | Owner action                                                       | State completes when                                      |
    | -------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------- |
    | Local HITL visible in child pane | Leave the decision with that child                                 | User answers there and child resumes                      |
-   | `COMPLETED` report               | Verify durable evidence and integrate the bounded result           | Owner verification passes                                 |
+   | `COMPLETED` report               | Verify durable evidence and integrate the current assignment       | Owner verification passes; helper is not yet RELEASED     |
    | `BLOCKED` report                 | Resolve its exact parent action while keeping the helper available | Child resumes, or the unresolved blocker remains recorded |
 
-4. After terminal integration, read [cleanup.md](cleanup.md), classify every condition, then call `loom_close` once. `reconcile` stops mutation until live state is inspected.
+4. After terminal integration, read [cleanup.md](cleanup.md), classify every condition, then call `loom_close` once. Treat write results awaiting human review or acceptance as `pending:true`. Sticky helpers remain retained until the current user confirms the review or interaction is finished, then owner may pass `release:true`. `reconcile` stops mutation until live state is inspected.
 
 If an `existing` checkout has no matching workspace, open it with loaded `herdr`, then retry once. Loom recognizes an ordinary workspace from its unambiguous pane Git cwd; mixed-checkout or duplicate matches must be disambiguated first. A rejection or pre-send failure may use the manual branch; ambiguous mutation stays reconcile.
 

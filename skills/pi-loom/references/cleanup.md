@@ -16,12 +16,13 @@ A pane is retirable only when every condition holds:
 - pane has no named reuse role;
 - pane is neither caller pane nor foreground pane.
 
-`idle` alone is not a retirement signal. Classification completes when each condition has evidence or the pane remains open with one recorded reason.
+`COMPLETED` closes only the current assignment; it does not RELEASE the helper or workstream. `idle` alone is not a retirement signal. A write result awaiting human review or acceptance remains pending. Classification completes when each condition has evidence or the pane remains open with one recorded reason.
 
 ## Select one executor
 
-- For a helper bound by `loom_start`, call `loom_close` with integration, durable evidence, descendant settlement, pending-work, running-service, keep, and execute decisions. Preserve a reconcile result for inspection.
-- For reuse, pass `keep: true`; Pi Loom retains the live helper without closing it.
+- For a helper bound by `loom_start`, call `loom_close` with integration, durable evidence, descendant settlement, pending-work, running-service, keep, release, and execute decisions. Preserve a reconcile result for inspection.
+- `loom_start keep:true` persists sticky retention across session reloads. `loom_close` retains that helper unless the current user confirms the review or interaction is finished and owner passes `release:true`; only then may normal retirement proceed.
+- Per-call `loom_close keep:true` remains a retain override for compatibility.
 - A borrowed checkout closes only the helper pane. An owned worktree is removed with `force=false` only when the helper is its sole pane; dirty, shared, or identity-mismatched worktrees remain for inspection.
 - Otherwise use manual leaf-first closure below.
 
