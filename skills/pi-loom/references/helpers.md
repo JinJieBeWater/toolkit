@@ -32,7 +32,7 @@ Define task, checkout, workstream, role, read/write access, allowed files, deliv
 
 ## Persistent helper branch
 
-1. Read [layout.md](layout.md). If `loom_start` is available, call it once. It acquires the requested checkout, chooses its root pane or exact-affinity layout, starts Pi, binds return channel, and sends the task.
+1. Read [layout.md](layout.md). Use `loom_status` when selecting or reusing a persistent context. Its name filter excludes unnamed contexts; inspect unfiltered status when collision context matters. If `loom_start` is available, call it once. It globally preflights same-name live Pi helpers before any mutation: `existing-helper` means reuse that context or choose another name; `DISCOVERY_UNAVAILABLE` means no mutation occurred. Otherwise it acquires the requested checkout, chooses its root pane or exact-affinity layout, starts Pi, binds return channel, and sends the task.
 2. On `started`, end the turn. Wait for `loom_report`; do not poll.
 3. Route the next child state:
 
@@ -42,7 +42,7 @@ Define task, checkout, workstream, role, read/write access, allowed files, deliv
    | `COMPLETED` report               | Verify durable evidence and integrate the current assignment       | Owner verification passes; helper is not yet RELEASED     |
    | `BLOCKED` report                 | Resolve its exact parent action while keeping the helper available | Child resumes, or the unresolved blocker remains recorded |
 
-4. After terminal integration, read [cleanup.md](cleanup.md), classify every condition, then call `loom_close` once. Treat write results awaiting human review or acceptance as `pending:true`. Sticky helpers remain retained until the current user confirms the review or interaction is finished, then owner may pass `release:true`. `reconcile` stops mutation until live state is inspected.
+4. After terminal integration, read [cleanup.md](cleanup.md), classify every condition, then call `loom_close` once. `not-owned` means context is external and Loom did not retire it. Treat write results awaiting human review or acceptance as `pending:true`. Sticky helpers remain retained until current user confirms review or interaction is finished, then owner may pass `release:true`. `reconcile` stops mutation until live state is inspected.
 
 If an `existing` checkout has no matching workspace, open it with loaded `herdr`, then retry once. Loom recognizes an ordinary workspace from its unambiguous pane Git cwd; mixed-checkout or duplicate matches must be disambiguated first. A rejection or pre-send failure may use the manual branch; ambiguous mutation stays reconcile.
 

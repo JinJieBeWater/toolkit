@@ -292,7 +292,8 @@ export type SkillLaunchResult =
         | "WORKSTREAM_LABEL_REQUIRED"
         | "WORKSTREAM_LABEL_CONFLICT"
         | "CHECKOUT_WORKSPACE_REQUIRED"
-        | "LAUNCH_FAILED";
+        | "LAUNCH_FAILED"
+        | "DISCOVERY_UNAVAILABLE";
       reason: string;
     }
   | {

@@ -7,6 +7,11 @@ import { HERDR_PROTOCOL, HerdrAdapter } from "./herdr-adapter.ts";
 import { NodeHerdrSocketTransport } from "./herdr-socket-transport.ts";
 import { compilePersistentHelperLaunch, type PiThinking } from "./skill-launch.ts";
 import {
+  SkillHelperDiscovery,
+  type HelperContextView,
+  type HelperDiscoveryPort,
+} from "./skill-discovery.ts";
+import {
   HelperDirectory,
   SkillLaunchExecutor,
   helperBindingStorePath,
@@ -56,6 +61,12 @@ type RetirementPort = {
     input: Parameters<SkillRetirementExecutor["retire"]>[0],
   ) => Promise<SkillRetirementResult>;
 };
+type ExistingHelperResult = {
+  kind: "existing-helper";
+  helperAlias: string;
+  helper: HelperContextView;
+  guidance: "Reuse existing helper or choose another name";
+};
 type ReportArtifact = {
   path: string;
   cleanup: () => Promise<void>;
@@ -68,6 +79,7 @@ export type LoomExtensionOptions = {
   reporting?: ReportingPort;
   reportArtifactWriter?: (details: string) => Promise<ReportArtifact>;
   retirement?: RetirementPort;
+  discovery?: HelperDiscoveryPort;
 };
 
 function attachHelperDirectory(
@@ -150,6 +162,7 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
   const reportArtifactWriter = options.reportArtifactWriter ?? writeReportArtifact;
   const retirement =
     options.retirement ?? new SkillRetirementExecutor({ herdr: herdr(), directory });
+  const discovery = options.discovery ?? new SkillHelperDiscovery({ herdr: herdr(), directory });
   const childRole = Boolean(env.PI_HERDR_PARENT_PANE_ID && env.PI_HERDR_TASK_ID);
   const reportDeliveries = new Map<
     "COMPLETED" | "BLOCKED",
@@ -174,13 +187,35 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       callerCwd: string;
     },
     ctx: Pick<ExtensionContext, "sessionManager">,
-  ): Promise<SkillLaunchResult> => {
+  ): Promise<SkillLaunchResult | ExistingHelperResult> => {
     attachHelperDirectory(directory, ctx);
     if (!/^[a-z][a-z0-9_-]{0,31}$/.test(input.name)) {
       throw new Error("name must match Herdr agent name grammar");
     }
     if (input.access === "write" && input.writeApproved !== true) {
       throw new Error("write launch requires explicit user approval for the file boundary");
+    }
+    const discovered = await discovery.discover(input.name);
+    if (discovered.kind === "unavailable") {
+      return {
+        kind: "rejected",
+        helperAlias: input.name,
+        code: "DISCOVERY_UNAVAILABLE",
+        reason: "global helper discovery is unavailable before launch",
+      };
+    }
+    const existing = discovered.helpers.find(
+      (helper) =>
+        helper.name === input.name &&
+        (helper.relation === "owned" || helper.relation === "external"),
+    );
+    if (existing) {
+      return {
+        kind: "existing-helper",
+        helperAlias: input.name,
+        helper: existing,
+        guidance: "Reuse existing helper or choose another name",
+      };
     }
     const scope =
       input.access === "read"
@@ -238,10 +273,21 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
     }
   };
 
-  const startResult = (result: SkillLaunchResult) => {
+  const startResult = (result: SkillLaunchResult | ExistingHelperResult) => {
     if (result.kind === "started") {
       return {
         content: [{ type: "text" as const, text: `Helper ${result.helperAlias} started` }],
+        details: result,
+      };
+    }
+    if (result.kind === "existing-helper") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Helper ${result.helperAlias} already exists; ${result.guidance.toLowerCase()}`,
+          },
+        ],
         details: result,
       };
     }
@@ -413,7 +459,53 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       attachHelperDirectory(directory, ctx);
-      const reuseRole = directory.resolve(params.name)?.reuseRole;
+      const discovered = await discovery.discover(params.name);
+      const binding = directory.resolve(params.name);
+      if (discovered.kind === "unavailable" && binding) {
+        const result: SkillRetirementResult = {
+          helperAlias: params.name,
+          action: "reconcile",
+          reasons: ["discovery-unavailable"],
+        };
+        return {
+          content: [{ type: "text" as const, text: `Helper ${params.name}: reconcile` }],
+          details: result,
+        };
+      }
+      const helper =
+        discovered.kind === "available"
+          ? discovered.helpers.find(
+              (candidate) => candidate.name === params.name && candidate.relation === "owned",
+            )
+          : undefined;
+      const missing =
+        discovered.kind === "available" &&
+        discovered.helpers.some(
+          (candidate) => candidate.name === params.name && candidate.relation === "missing",
+        );
+      if (missing) {
+        const result: SkillRetirementResult = {
+          helperAlias: params.name,
+          action: "reconcile",
+          reasons: ["helper-live-identity-missing"],
+        };
+        return {
+          content: [{ type: "text" as const, text: `Helper ${params.name}: reconcile` }],
+          details: result,
+        };
+      }
+      if (!helper) {
+        const result: SkillRetirementResult = {
+          helperAlias: params.name,
+          action: "not-owned",
+          reasons: ["helper-not-owned-by-current-session"],
+        };
+        return {
+          content: [{ type: "text" as const, text: `Helper ${params.name}: not-owned` }],
+          details: result,
+        };
+      }
+      const reuseRole = binding?.reuseRole;
       if (params.keep || (reuseRole && params.release !== true)) {
         const result = {
           helperAlias: params.name,
@@ -458,40 +550,27 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       attachHelperDirectory(directory, ctx);
-      const bindings = directory
-        .list()
-        .filter((binding) => (params.name ? binding.alias === params.name : true));
-      const helpers = await Promise.all(
-        bindings.map(async (binding) => {
-          try {
-            const agent = await herdr().getAgent(binding.alias);
-            return {
-              name: binding.alias,
-              state: agent.agentStatus,
-              checkout: binding.managedWorktree ? "managed-worktree" : "borrowed",
-            };
-          } catch {
-            return {
-              name: binding.alias,
-              state: "missing",
-              checkout: binding.managedWorktree ? "managed-worktree" : "borrowed",
-            };
-          }
-        }),
-      );
+      const discovered = await discovery.discover(params.name);
+      const helpers = discovered.kind === "available" ? discovered.helpers : [];
       return {
         content: [
           {
             type: "text" as const,
             text:
-              helpers.length === 0
-                ? "No persistent Pi Loom helpers"
-                : helpers
-                    .map((helper) => `${helper.name}: ${helper.state} (${helper.checkout})`)
-                    .join("\n"),
+              discovered.kind === "unavailable"
+                ? "Helper discovery unavailable"
+                : helpers.length === 0
+                  ? "No persistent Pi Loom helpers"
+                  : helpers
+                      .map(
+                        (helper) =>
+                          `${helper.name ?? "unnamed"}: ${helper.state} (${helper.relation}; ${helper.ownership}; ${helper.control}; ${helper.checkout ?? "none"})`,
+                      )
+                      .join("\n"),
           },
         ],
-        details: { helpers },
+        details:
+          discovered.kind === "available" ? { helpers } : { helpers, discovery: "unavailable" },
       };
     },
   });

@@ -151,6 +151,60 @@ test("retirement closes only an eligible workflow-owned leaf and verifies absenc
   assert.doesNotMatch(JSON.stringify(result), /w1:p2|w1:p1/);
 });
 
+test("retirement rejects initial pane mismatch with matching terminal", async () => {
+  const directory = new HelperDirectory();
+  directory.bind("helper-reviewer", "w1:p2", "term_helper");
+  const herdr = new FakeRetirementHerdr([], [{ ...agent(), paneId: "w1:p9" }]);
+  const executor = new SkillRetirementExecutor({ herdr, directory });
+
+  const result = await executor.retire({
+    helperAlias: "helper-reviewer",
+    callerPaneId: "w1:p1",
+    semanticEvidence,
+    execute: true,
+  });
+
+  assert.deepEqual(result, {
+    helperAlias: "helper-reviewer",
+    action: "reconcile",
+    reasons: ["helper-binding-identity-mismatch"],
+  });
+  assert.deepEqual(herdr.calls, ["agent:helper-reviewer"]);
+  assert.equal(directory.resolve("helper-reviewer")?.paneId, "w1:p2");
+});
+
+test("retirement rejects settlement pane mismatch with matching terminal", async () => {
+  const directory = new HelperDirectory();
+  directory.bind("helper-reviewer", "w1:p2", "term_helper");
+  const working = snapshot(true);
+  (working.agents[0] as { agent_status: string }).agent_status = "working";
+  const herdr = new FakeRetirementHerdr(
+    [working],
+    [agent("working"), { ...agent("done"), paneId: "w1:p9" }],
+  );
+  const executor = new SkillRetirementExecutor({ herdr, directory });
+
+  const result = await executor.retire({
+    helperAlias: "helper-reviewer",
+    callerPaneId: "w1:p1",
+    semanticEvidence,
+    execute: true,
+  });
+
+  assert.deepEqual(result, {
+    helperAlias: "helper-reviewer",
+    action: "reconcile",
+    reasons: ["helper-binding-identity-mismatch"],
+  });
+  assert.deepEqual(herdr.calls, [
+    "agent:helper-reviewer",
+    "snapshot",
+    "wait-settled:helper-reviewer",
+    "agent:helper-reviewer",
+  ]);
+  assert.equal(directory.resolve("helper-reviewer")?.paneId, "w1:p2");
+});
+
 test("retirement removes an eligible managed worktree without force", async () => {
   const directory = managedDirectory();
   const herdr = new FakeRetirementHerdr([managedSnapshot(), snapshot(false)], [managedAgent()]);
@@ -322,7 +376,7 @@ test("dirty managed worktree removal reconciles and keeps its binding", async ()
   assert.deepEqual(result, {
     helperAlias: "auth-writer",
     action: "reconcile",
-    reasons: ["close-unconfirmed:worktree contains uncommitted changes"],
+    reasons: ["close-unconfirmed"],
   });
   assert.deepEqual(herdr.calls, [
     "agent:auth-writer",
@@ -370,14 +424,18 @@ test("initial snapshot failure returns reconciliation", async () => {
   assert.deepEqual(result, {
     helperAlias: "helper-reviewer",
     action: "reconcile",
-    reasons: ["snapshot-unconfirmed:missing fake snapshot"],
+    reasons: ["snapshot-unconfirmed"],
   });
 });
 
 test("recent transcript failure returns reconciliation", async () => {
   const directory = new HelperDirectory();
   directory.bind("helper-reviewer", "w1:p2", "term_helper");
-  const herdr = new FakeRetirementHerdr([snapshot(true)], [agent()], new Error("socket closed"));
+  const herdr = new FakeRetirementHerdr(
+    [snapshot(true)],
+    [agent()],
+    new Error("socket /private/herdr.sock cwd /repo"),
+  );
   const executor = new SkillRetirementExecutor({ herdr, directory });
 
   const result = await executor.retire({
@@ -390,8 +448,9 @@ test("recent transcript failure returns reconciliation", async () => {
   assert.deepEqual(result, {
     helperAlias: "helper-reviewer",
     action: "reconcile",
-    reasons: ["recent-transcript-unconfirmed:socket closed"],
+    reasons: ["recent-transcript-unconfirmed"],
   });
+  assert.doesNotMatch(JSON.stringify(result), /private|socket|cwd|repo/);
 });
 
 test("integrated report waits server-side for the child final response before close", async () => {
@@ -470,7 +529,7 @@ test("post-close snapshot failure returns reconciliation", async () => {
   assert.deepEqual(result, {
     helperAlias: "helper-reviewer",
     action: "reconcile",
-    reasons: ["close-verification-unconfirmed:missing fake snapshot"],
+    reasons: ["close-verification-unconfirmed"],
   });
   assert.equal(directory.resolve("helper-reviewer")?.terminalId, "term_helper");
 });

@@ -22,6 +22,7 @@
 - **Sticky retention**：`loom_start keep:true` 持久化的复用策略；assignment 完成后继续保留 helper，直到 owner 显式 RELEASE。
 - **Transfer**：所有权移动到另一个 Pi。
 - **Reconcile**：mutation 可能已发生；重试前先检查 live state。
+- **Global discovery**：当前 session binding 与整个 Herdr session 的 live Pi context 合并后的只读 roster；它是 status、launch preflight 与 close ownership check 的共同输入。
 
 ## 外部权威
 
@@ -37,6 +38,14 @@
 3. terminal report delivery
 4. helper 与 owned checkout retirement
 5. canonical `pi-loom` Skill
+
+## Global discovery 与本地控制
+
+`loom_status` 从当前 Pi session 的 `HelperDirectory` 和 Herdr `session.snapshot` 合并全部 live `agent: "pi"` context。命名与未命名 context 都显示；name filter 仅匹配命名 context。输出只含 name（可为 `null`）、state、relation、ownership、control 与 checkout category；本地 lease 的 ownership 值为 `current-session`，绝不泄漏 Herdr identity、socket、cwd 或 snapshot。
+
+binding 加同名 live agent 的 pane/terminal 精确 identity 才是 `owned`。无匹配 live agent 的 binding 是 `missing` current-session-owned lease；任何未精确匹配的 live context 是 `external`。输出按公开字段稳定排序。
+
+`loom_start` 在任何 layout、checkout 或 worktree mutation 前做全局同名 live preflight。找到 `owned` 或 `external` live helper 时返回 `existing-helper`，提示 reuse 或改名；discovery 不可用时以 `DISCOVERY_UNAVAILABLE` 拒绝且不发送 mutation。Herdr 全局 agent-name uniqueness 仍是最终并发权威；无 cross-process lock，之后 launch 歧义沿用 existing reconcile safety。`loom_close` 只对当前 `current-session` 的 `owned` binding 进入 retirement；external 或未绑定 name 返回 `not-owned`，不调用 retirement。`missing` 返回 `helper-live-identity-missing` reconcile，不宣称 live owned，也不触发 retirement。
 
 terminal report 保持短小；review、investigation 等长结果先写入私有临时 Markdown artifact，canonical report 只携带 durable pointer。artifact 写入失败时不得开始 delivery；delivery 失败时仅清理该次受控 artifact，并允许重试。
 
