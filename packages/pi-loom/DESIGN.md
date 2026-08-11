@@ -19,6 +19,7 @@
 - **Checkout lease**：helper 使用的 checkout；已有 checkout 为 borrowed，Loom 创建的 worktree 为 owned。
 - **Pending lease**：worktree 已确认但 helper terminal identity 尚未确认；agent launch 前先持久化，直到 agent 完成改绑或 owned checkout 被安全回收。
 - **Workstream**：同一 Herdr tab 中的一组相关工作。
+- **Sticky retention**：`loom_start keep:true` 持久化的复用策略；assignment 完成后继续保留 helper，直到 owner 显式 RELEASE。
 - **Transfer**：所有权移动到另一个 Pi。
 - **Reconcile**：mutation 可能已发生；重试前先检查 live state。
 
@@ -40,3 +41,5 @@
 terminal report 保持短小；review、investigation 等长结果先写入私有临时 Markdown artifact，canonical report 只携带 durable pointer。artifact 写入失败时不得开始 delivery；delivery 失败时仅清理该次受控 artifact，并允许重试。
 
 checkout workspace identity 优先使用 Herdr 显式 worktree checkout；普通 workspace 仅在其所有可解析 pane cwd 归一到同一 Git checkout 时采用 fallback。target checkout 必须唯一匹配一个 workspace，歧义时在 mutation 前拒绝。
+
+`COMPLETED` 只结束当前 assignment，不释放 helper 或 workstream。sticky helper 的 session binding 保存 reuse role；`loom_close` 默认 retain，只有 `release:true` 才进入 retirement。

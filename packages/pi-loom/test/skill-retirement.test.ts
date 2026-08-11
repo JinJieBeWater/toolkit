@@ -254,6 +254,33 @@ test("retirement upgrades a pending lease when an ambiguous launch actually star
   assert.equal(directory.resolve("auth-writer"), undefined);
 });
 
+test("retirement preserves sticky retention when rebinding a live pending helper", async () => {
+  const directory = new HelperDirectory();
+  directory.reserveManagedWorktree(
+    "auth-writer",
+    "w2:p1",
+    {
+      workspaceId: "w2",
+      path: "/repo-worktrees/auth",
+      branch: "fix/auth-expiry",
+    },
+    "writer",
+  );
+  const herdr = new FakeRetirementHerdr([managedSnapshot()], [managedAgent()]);
+  const executor = new SkillRetirementExecutor({ herdr, directory });
+
+  const result = await executor.retire({
+    helperAlias: "auth-writer",
+    callerPaneId: "w1:p1",
+    semanticEvidence: { ...semanticEvidence, reportIntegrated: false },
+    execute: false,
+  });
+
+  assert.equal(result.action, "retain");
+  assert.equal(directory.resolve("auth-writer")?.terminalId, "term_helper");
+  assert.equal(directory.resolve("auth-writer")?.reuseRole, "writer");
+});
+
 test("retirement retains a managed worktree containing another pane", async () => {
   const directory = managedDirectory();
   const herdr = new FakeRetirementHerdr([managedSnapshot(true)], [managedAgent()]);

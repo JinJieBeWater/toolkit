@@ -42,6 +42,7 @@ export type HelperBinding = {
   paneId: string;
   terminalId?: string;
   workflowOwned: true;
+  reuseRole?: string;
   managedWorktree?: {
     workspaceId: string;
     path: string;
@@ -80,6 +81,12 @@ function parseHelperBindings(path: string): HelperBinding[] {
       throw new Error("invalid helper binding store");
     }
     const managedWorktree = binding.managedWorktree;
+    if (
+      binding.reuseRole !== undefined &&
+      (typeof binding.reuseRole !== "string" || binding.reuseRole.trim().length === 0)
+    ) {
+      throw new Error("invalid helper binding store");
+    }
     if (
       managedWorktree !== undefined &&
       (!managedWorktree ||
@@ -137,7 +144,14 @@ export class HelperDirectory {
     this.#path = path;
     if (!path) return;
     for (const binding of parseHelperBindings(path)) {
-      this.#bind(binding.alias, binding.paneId, binding.terminalId, binding.managedWorktree, false);
+      this.#bind(
+        binding.alias,
+        binding.paneId,
+        binding.terminalId,
+        binding.managedWorktree,
+        binding.reuseRole,
+        false,
+      );
     }
   }
 
@@ -146,16 +160,18 @@ export class HelperDirectory {
     paneId: string,
     terminalId: string,
     managedWorktree?: HelperBinding["managedWorktree"],
+    reuseRole?: string,
   ): void {
-    this.#bind(alias, paneId, terminalId, managedWorktree, true);
+    this.#bind(alias, paneId, terminalId, managedWorktree, reuseRole, true);
   }
 
   reserveManagedWorktree(
     alias: string,
     paneId: string,
     managedWorktree: NonNullable<HelperBinding["managedWorktree"]>,
+    reuseRole?: string,
   ): void {
-    this.#bind(alias, paneId, undefined, managedWorktree, false);
+    this.#bind(alias, paneId, undefined, managedWorktree, reuseRole, false);
     this.#persist();
   }
 
@@ -164,8 +180,12 @@ export class HelperDirectory {
     paneId: string,
     terminalId: string | undefined,
     managedWorktree: HelperBinding["managedWorktree"],
+    reuseRole: string | undefined,
     persist: boolean,
   ): void {
+    if (reuseRole !== undefined && !reuseRole.trim()) {
+      throw new Error("reuse role must not be blank");
+    }
     const existing = this.#bindings.get(alias);
     if (existing && existing.paneId !== paneId) {
       throw new Error(`helper alias ${alias} is already bound`);
@@ -181,6 +201,7 @@ export class HelperDirectory {
       paneId,
       ...(terminalId ? { terminalId } : {}),
       workflowOwned: true,
+      ...(reuseRole ? { reuseRole } : {}),
       ...(managedWorktree ? { managedWorktree: structuredClone(managedWorktree) } : {}),
     });
     try {
@@ -291,6 +312,7 @@ type SkillLaunchInput = {
   callerPaneId: string;
   callerCwd?: string;
   launch: CompiledPersistentHelperLaunch;
+  reuseRole?: string;
   worktree?: { branch: string; base?: string; path?: string };
 };
 
@@ -450,11 +472,16 @@ export class SkillLaunchExecutor {
         };
       }
       try {
-        this.options.directory.reserveManagedWorktree(input.helperAlias, managedWorktree.paneId, {
-          workspaceId: managedWorktree.workspaceId,
-          path: managedWorktree.path,
-          branch: managedWorktree.branch,
-        });
+        this.options.directory.reserveManagedWorktree(
+          input.helperAlias,
+          managedWorktree.paneId,
+          {
+            workspaceId: managedWorktree.workspaceId,
+            path: managedWorktree.path,
+            branch: managedWorktree.branch,
+          },
+          input.reuseRole,
+        );
       } catch (error) {
         return {
           kind: "reconcile",
@@ -650,6 +677,7 @@ export class SkillLaunchExecutor {
               branch: managedWorktree.branch,
             }
           : undefined,
+        input.reuseRole,
       );
     } catch (error) {
       promptContract.cleanup();

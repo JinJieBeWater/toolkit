@@ -45,7 +45,7 @@ Child pane: <pane-id> (<role>; workstream: <workstream>)
 
 Read pane role and tab workstream labels live at report time. Inherited launch labels are fallback only when live presentation is absent or unreadable.
 
-Use `BLOCKED` for a blocker requiring parent action. User decisions stay local. Send an operational blocker after identifying exact parent action, then remain available. After resuming, send one `COMPLETED` report when its criterion is met. Child final response is transcript, not an upstream report.
+Use `BLOCKED` for a blocker requiring parent action. User decisions stay local. Send an operational blocker after identifying exact parent action, then remain available. After resuming, send one `COMPLETED` report when its criterion is met. `COMPLETED` ends the current assignment only; it does not RELEASE a retained helper or workstream. Child final response is transcript, not an upstream report.
 
 ## Delivery fallback
 

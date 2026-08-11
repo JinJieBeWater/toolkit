@@ -261,6 +261,7 @@ export class SkillRetirementExecutor {
           binding.paneId,
           live.terminalId,
           binding.managedWorktree,
+          binding.reuseRole,
         );
         binding = this.options.directory.resolve(binding.alias)!;
       } catch (error) {
