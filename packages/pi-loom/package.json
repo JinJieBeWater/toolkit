@@ -10,6 +10,7 @@
     "src/skill-extension.ts",
     "src/skill-launch.ts",
     "src/skill-launch-executor.ts",
+    "src/skill-discovery.ts",
     "src/skill-presentation.ts",
     "src/skill-reporting.ts",
     "src/skill-retirement.ts",

@@ -64,7 +64,7 @@ export type RetirementSemanticEvidence = Pick<
 
 export type SkillRetirementResult = {
   helperAlias: string;
-  action: "eligible" | "closed" | "retain" | "reconcile";
+  action: "eligible" | "closed" | "retain" | "reconcile" | "not-owned";
   reasons: string[];
 };
 
@@ -145,21 +145,21 @@ export class SkillRetirementExecutor {
   ): Promise<SkillRetirementResult> {
     try {
       await this.options.herdr.removeWorktree(managedWorktree.workspaceId, managedWorktree.path);
-    } catch (error) {
+    } catch {
       return {
         helperAlias,
         action: "reconcile",
-        reasons: [`close-unconfirmed:${(error as Error).message}`],
+        reasons: ["close-unconfirmed"],
       };
     }
     let after: HerdrSnapshot;
     try {
       after = await this.options.herdr.snapshot();
-    } catch (error) {
+    } catch {
       return {
         helperAlias,
         action: "reconcile",
-        reasons: [`close-verification-unconfirmed:${(error as Error).message}`],
+        reasons: ["close-verification-unconfirmed"],
       };
     }
     if (hasWorkspace(after, managedWorktree.workspaceId)) {
@@ -189,11 +189,11 @@ export class SkillRetirementExecutor {
     let before: HerdrSnapshot;
     try {
       before = await this.options.herdr.snapshot();
-    } catch (error) {
+    } catch {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`snapshot-unconfirmed:${(error as Error).message}`],
+        reasons: ["snapshot-unconfirmed"],
       };
     }
     const guard = managedWorktreeGuard(before, binding.paneId, managedWorktree);
@@ -244,7 +244,7 @@ export class SkillRetirementExecutor {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`agent-resolution-unconfirmed:${(error as Error).message}`],
+        reasons: ["agent-resolution-unconfirmed"],
       };
     }
     if (binding.terminalId === undefined) {
@@ -264,30 +264,30 @@ export class SkillRetirementExecutor {
           binding.reuseRole,
         );
         binding = this.options.directory.resolve(binding.alias)!;
-      } catch (error) {
+      } catch {
         return {
           helperAlias: input.helperAlias,
           action: "reconcile",
-          reasons: [`pending-helper-binding-failed:${(error as Error).message}`],
+          reasons: ["pending-helper-binding-failed"],
         };
       }
     }
-    if (live.terminalId !== binding.terminalId) {
+    if (live.paneId !== binding.paneId || live.terminalId !== binding.terminalId) {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: ["helper-name-terminal-mismatch"],
+        reasons: ["helper-binding-identity-mismatch"],
       };
     }
 
     let before: HerdrSnapshot;
     try {
       before = await this.options.herdr.snapshot();
-    } catch (error) {
+    } catch {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`snapshot-unconfirmed:${(error as Error).message}`],
+        reasons: ["snapshot-unconfirmed"],
       };
     }
     if (!hasPane(before, live.paneId)) {
@@ -311,11 +311,11 @@ export class SkillRetirementExecutor {
       try {
         await this.options.herdr.waitAgentSettled(input.helperAlias, 30_000);
         live = await this.options.herdr.getAgent(input.helperAlias);
-        if (live.terminalId !== binding.terminalId) {
+        if (live.paneId !== binding.paneId || live.terminalId !== binding.terminalId) {
           return {
             helperAlias: input.helperAlias,
             action: "reconcile",
-            reasons: ["helper-name-terminal-mismatch"],
+            reasons: ["helper-binding-identity-mismatch"],
           };
         }
         before = await this.options.herdr.snapshot();
@@ -323,11 +323,11 @@ export class SkillRetirementExecutor {
           const guard = managedWorktreeGuard(before, live.paneId, binding.managedWorktree);
           if (guard) return { helperAlias: input.helperAlias, ...guard };
         }
-      } catch (error) {
+      } catch {
         return {
           helperAlias: input.helperAlias,
           action: "reconcile",
-          reasons: [`settlement-unconfirmed:${(error as Error).message}`],
+          reasons: ["settlement-unconfirmed"],
         };
       }
     }
@@ -340,11 +340,11 @@ export class SkillRetirementExecutor {
     }
     try {
       await this.options.herdr.readRecent(live.paneId);
-    } catch (error) {
+    } catch {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`recent-transcript-unconfirmed:${(error as Error).message}`],
+        reasons: ["recent-transcript-unconfirmed"],
       };
     }
     const reasons = retirementReasons({
@@ -373,21 +373,21 @@ export class SkillRetirementExecutor {
     }
     try {
       await this.options.herdr.closePane(live.paneId);
-    } catch (error) {
+    } catch {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`close-unconfirmed:${(error as Error).message}`],
+        reasons: ["close-unconfirmed"],
       };
     }
     let after: HerdrSnapshot;
     try {
       after = await this.options.herdr.snapshot();
-    } catch (error) {
+    } catch {
       return {
         helperAlias: input.helperAlias,
         action: "reconcile",
-        reasons: [`close-verification-unconfirmed:${(error as Error).message}`],
+        reasons: ["close-verification-unconfirmed"],
       };
     }
     if (hasPane(after, live.paneId)) {

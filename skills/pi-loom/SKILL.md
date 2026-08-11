@@ -1,6 +1,6 @@
 ---
 name: "pi-loom"
-description: "Ownership routing across Pi contexts. Use when delegating, integrating a child COMPLETED/BLOCKED report, or transferring through `转生`."
+description: "Ownership routing across Pi contexts. Use when delegating, finding or reusing persistent Pi contexts, integrating a child COMPLETED/BLOCKED report, or transferring through `转生`."
 ---
 
 # Pi Loom（Pi 织序）
@@ -23,3 +23,7 @@ When Herdr mechanics are needed, load and follow `herdr` before acting.
 Durable files and Git remain truth. Pi preserves reasoning, Herdr execution, and handoff transfer state.
 
 Pi Loom chooses ownership, workstream, and role, then places persistent helpers. Herdr owns live agent and pane lifecycle; handoff owns Transfer artifacts.
+
+Persistent helper launch: `existing-helper` means reuse or rename; `DISCOVERY_UNAVAILABLE` means no mutation.
+
+Before persistent reuse or closure, use `loom_status`: it discovers named and unnamed live Pi contexts across whole Herdr session without exposing identities. `owned` is `current-session` exact binding; `external` stays outside local control; `missing` is local lease without live owned context.
