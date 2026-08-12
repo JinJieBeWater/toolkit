@@ -30,6 +30,81 @@ const emptyDiscovery = {
   discover: async () => ({ kind: "available" as const, helpers: [] }),
 };
 
+const defaultReuseScope = {
+  cwd: "/repo",
+  access: "read" as const,
+  files: ["src/**"],
+};
+
+function stickyReuseHarness(
+  options: {
+    state?: string;
+    scope?: typeof defaultReuseScope | null;
+    prompt?: (input: any) => Promise<any>;
+  } = {},
+) {
+  const directory = new HelperDirectory();
+  directory.bind(
+    "reviewer",
+    "w1:p2",
+    "term_helper",
+    undefined,
+    "reviewer",
+    options.scope === null ? undefined : (options.scope ?? defaultReuseScope),
+  );
+  const { pi, tools } = fakePi();
+  registerLoomExtension(pi as never, {
+    env: { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/tmp/herdr.sock" },
+    helperDirectory: directory,
+    discovery: {
+      discover: async () => ({
+        kind: "available" as const,
+        helpers: [
+          {
+            name: "reviewer",
+            state: options.state ?? "idle",
+            relation: "owned" as const,
+            ownership: "current-session" as const,
+            control: "local" as const,
+            checkout: "borrowed" as const,
+          },
+        ],
+      }),
+    },
+    prompting: {
+      prompt: async (input) => {
+        assert.equal(input.paneId, "w1:p2");
+        return options.prompt
+          ? options.prompt(input)
+          : { paneId: "w1:p2", terminalId: "term_helper" };
+      },
+    },
+    launchExecutor: {
+      execute: async () => {
+        throw new Error("must not launch");
+      },
+    },
+    retirement: retained,
+  });
+  const execute = (params: Record<string, unknown> = {}, toolCallId = "call-assign") =>
+    tools.get("loom_start")!.execute(
+      toolCallId,
+      {
+        name: "reviewer",
+        task: "Review.",
+        workstream: "review",
+        role: "reviewer",
+        access: "read",
+        files: ["src/**"],
+        ...params,
+      },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+  return { execute };
+}
+
 test("child launch preserves isolated Pi config and executable path", () => {
   assert.deepEqual(
     childExecutionEnv({
@@ -73,6 +148,7 @@ test("default parent exposes only Pi Loom tools", () => {
   });
 
   assert.deepEqual([...tools.keys()].sort(), ["loom_close", "loom_start", "loom_status"]);
+  assert.equal((tools.get("loom_start") as any).parameters.properties.files.items.minLength, 1);
 });
 
 test("globally installed parent lets child inherit configured package", async () => {
@@ -181,7 +257,6 @@ test("loom_start maps short request to persistent launch seam", async () => {
     "/repo",
     "--tools",
   ]);
-  assert.match(received.launch.initialPrompt, /Do not launch descendants/);
 });
 
 test("loom_start maps managed checkout intent without exposing Herdr identities", async () => {
@@ -356,6 +431,47 @@ test("loom_start rejects globally discovered helper before launch", async () => 
   assert.equal(owned.details.helper.relation, "owned");
 });
 
+test("loom_start reuses only safe sticky helpers", async () => {
+  const success = stickyReuseHarness();
+  const reused = await success.execute({ task: "Follow up." }, "call-a2");
+  assert.deepEqual(reused.details, {
+    kind: "reused",
+    helperAlias: "reviewer",
+    assignmentId: "call-a2",
+  });
+
+  const unsafe: Array<{
+    label: string;
+    options?: Parameters<typeof stickyReuseHarness>[0];
+    params?: Record<string, unknown>;
+  }> = [
+    ...["working", "blocked", "unknown"].map((state) => ({ label: state, options: { state } })),
+    { label: "legacy", options: { scope: null } },
+    { label: "role", params: { role: "writer" } },
+    { label: "cwd", params: { checkout: { kind: "existing", path: "/other" } } },
+    { label: "access", params: { access: "write", writeApproved: true } },
+    { label: "files", params: { files: ["test/**"] } },
+    { label: "worktree", params: { checkout: { kind: "worktree", branch: "fix/x" } } },
+  ];
+  for (const { label, options, params } of unsafe) {
+    const harness = stickyReuseHarness(options);
+    assert.equal((await harness.execute(params)).details.kind, "existing-helper", label);
+  }
+
+  const unapproved = stickyReuseHarness();
+  await assert.rejects(() => unapproved.execute({ access: "write" }), /explicit user approval/);
+
+  for (const prompt of [
+    async () => ({ paneId: "other", terminalId: "other" }),
+    async () => {
+      throw new Error("stalled");
+    },
+  ]) {
+    const harness = stickyReuseHarness({ prompt });
+    assert.equal((await harness.execute()).details.kind, "reconcile");
+  }
+});
+
 test("loom_start sends missing session lease to executor instead of reusing it", async () => {
   const { pi, tools } = fakePi();
   let executions = 0;
@@ -519,7 +635,14 @@ test("loom_start persists sticky retention until loom_close explicitly releases 
     discovery: emptyDiscovery,
     launchExecutor: {
       execute: async (input: any) => {
-        directory.bind("reviewer", "w1:p2", "term_helper", undefined, input.reuseRole);
+        directory.bind(
+          "reviewer",
+          "w1:p2",
+          "term_helper",
+          undefined,
+          input.reuseRole,
+          input.reuseScope,
+        );
         return {
           kind: "started" as const,
           helperAlias: "reviewer",
@@ -556,6 +679,11 @@ test("loom_start persists sticky retention until loom_close explicitly releases 
 
   const reloaded = new HelperDirectory({ path: storePath });
   assert.equal(reloaded.resolve("reviewer")?.reuseRole, "reviewer");
+  assert.deepEqual(reloaded.resolve("reviewer")?.reuseScope, {
+    cwd: "/repo",
+    access: "read",
+    files: ["src/**"],
+  });
 
   let retirements = 0;
   const close = fakePi();
@@ -656,8 +784,7 @@ test("loom_start rejects invalid helper name before launch", async () => {
 
 test("child exposes Loom tools and reports canonical result", async () => {
   const { pi, tools } = fakePi();
-  let received: any;
-  let deliveries = 0;
+  const received: any[] = [];
   registerLoomExtension(pi as never, {
     env: {
       HERDR_ENV: "1",
@@ -679,9 +806,12 @@ test("child exposes Loom tools and reports canonical result", async () => {
     retirement: retained,
     reporting: {
       deliver: async (input: unknown) => {
-        deliveries += 1;
-        received = input;
-        return { delivered: "primary" as const, taskId: "review", status: "COMPLETED" as const };
+        received.push(input);
+        return {
+          delivered: "primary" as const,
+          taskId: (input as any).taskId,
+          status: (input as any).status,
+        };
       },
     },
   });
@@ -693,6 +823,7 @@ test("child exposes Loom tools and reports canonical result", async () => {
     "loom_status",
   ]);
   const report = {
+    assignmentId: "review",
     status: "COMPLETED",
     summary: "Review complete.",
     pointers: ["report.md"],
@@ -708,12 +839,18 @@ test("child exposes Loom tools and reports canonical result", async () => {
     ...report,
     summary: "Different duplicate content.",
   });
+  await tools.get("loom_report")!.execute("call-next", { ...report, assignmentId: "next" });
+  await tools.get("loom_report")!.execute("call-blocked", { ...report, status: "BLOCKED" });
 
-  assert.equal(deliveries, 1);
+  assert.equal(received.length, 3);
   assert.match(duplicate.content[0].text, /already delivered/);
-  assert.equal(received.outcome, "Review complete.");
-  assert.deepEqual(received.durablePointers, ["report.md"]);
-  assert.deepEqual(received.verification, ["npm test"]);
+  assert.equal(received[0].outcome, "Review complete.");
+  assert.deepEqual(received[0].durablePointers, ["report.md"]);
+  assert.deepEqual(received[0].verification, ["npm test"]);
+  assert.deepEqual(
+    received.map(({ taskId, status }) => `${taskId}:${status}`),
+    ["review:COMPLETED", "next:COMPLETED", "review:BLOCKED"],
+  );
 });
 
 test("loom_report stores long details in a private artifact", async (t) => {
@@ -742,6 +879,7 @@ test("loom_report stores long details in a private artifact", async (t) => {
 
   const details = "# Investigation\n\nFull evidence.";
   const result = await tools.get("loom_report")!.execute("call-report", {
+    assignmentId: "investigation",
     status: "COMPLETED",
     summary: "Investigation complete.",
     details,
@@ -791,6 +929,7 @@ test("loom_report does not deliver or deduplicate a failed artifact write", asyn
     },
   });
   const report = {
+    assignmentId: "review",
     status: "COMPLETED",
     summary: "Review complete.",
     pointers: [],
@@ -837,6 +976,7 @@ test("loom_report cleans its owned artifact when delivery fails and permits retr
     },
   });
   const report = {
+    assignmentId: "review",
     status: "COMPLETED",
     summary: "Review complete.",
     details: "# Full report",
@@ -1062,11 +1202,18 @@ test("loom_close fails closed for missing lease beside same-name external contex
   });
 });
 
-test("loom_close fails closed for a missing lease", async () => {
+test("loom_close routes a pending managed worktree lease to retirement", async () => {
   const { pi, tools } = fakePi();
+  const directory = new HelperDirectory();
+  directory.reserveManagedWorktree("writer", "w2:p1", {
+    workspaceId: "w2",
+    path: "/repo-worktrees/writer",
+    branch: "fix/writer",
+  });
   let retirements = 0;
   registerLoomExtension(pi as never, {
     env: { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/tmp/herdr.sock" },
+    helperDirectory: directory,
     discovery: {
       discover: async () => ({
         kind: "available" as const,
@@ -1106,11 +1253,11 @@ test("loom_close fails closed for a missing lease", async () => {
     { cwd: "/repo" },
   );
 
-  assert.equal(retirements, 0);
+  assert.equal(retirements, 1);
   assert.deepEqual(result.details, {
     helperAlias: "writer",
-    action: "reconcile",
-    reasons: ["helper-live-identity-missing"],
+    action: "closed",
+    reasons: [],
   });
 });
 

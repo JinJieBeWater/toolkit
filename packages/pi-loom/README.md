@@ -25,7 +25,7 @@ Pi Loom 为 Herdr 中的多个 Pi 上下文提供所有权路由和持久 helper
 
 `loom_status` 覆盖整个 Herdr session：当前 session 启动的 helper，以及所有 live Pi context（包括未命名 context）。结果仅含 `name`、`state`、`relation`、`ownership`、`control`、`checkout`；不会暴露 pane、terminal、workspace、tab、socket、cwd 或 raw snapshot。`name` filter 只匹配命名 context。
 
-`owned` 需要当前-session binding 与 live name、pane、terminal 全部精确匹配；失去 live match 的 binding 是 `missing` current-session-owned lease；其余 live context 是 `external`。`loom_start` 在任何 mutation 前检查全局同名 live helper，存在时返回 `existing-helper` 并要求 reuse 或改名；discovery 不可用时返回 `DISCOVERY_UNAVAILABLE` 且不启动。`loom_close` 只会回收当前 `current-session` 的 `owned` lease；`missing` 返回 `helper-live-identity-missing` reconcile，external 返回 `not-owned`，两者均不作 retirement。
+`owned`、`missing`、`external` 的身份与回收语义见 [DESIGN.md](DESIGN.md)。
 
 `loom_start` 的 `checkout` 支持 `current`、`existing` 和 `worktree`；省略时使用当前 checkout。managed worktree 直接复用 Herdr 返回的 root pane，不创建空 tab：
 
