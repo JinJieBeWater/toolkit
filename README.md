@@ -1,16 +1,25 @@
 # Spencer Agent Toolkit
 
-个人 Agent 工具集合。目前包含 Pi Loom、Moshi + Herdr 移动端远程接入和 Lark Skill；另附[我的 Pi 扩展清单](docs/pi-extensions.md)，记录当前 packages、启用状态和恢复方式。
+个人 Agent 工具集合。目前包含 Tight Execution、Pi Loom、Moshi + Herdr 移动端远程接入和 Lark Skill；另附[我的 Pi 扩展清单](docs/pi-extensions.md)，记录当前 packages、启用状态和恢复方式。
 
 ## 怎么选
 
 | 需求                                                                     | 选择                 |
 | ------------------------------------------------------------------------ | -------------------- |
+| 固定讨论、实施或验收模式，控制改动范围与关键决策                         | `tight-execution`    |
 | 在 Herdr 中让多个 Pi 分工，并保留辅助上下文                              | Pi Loom              |
 | 从支持 EasyTier 私网与 Moshi 的移动设备持续操作 Mac 上的受支持 CLI Agent | `moshi-herdr-remote` |
 | 操作飞书消息、文档、云盘、日历等工作区能力                               | `lark` Skill         |
 
 安装工具无需手动 clone 仓库；安装命令会自行下载。
+
+## Tight Execution
+
+固定 `DISCUSS`、`IMPLEMENT` 或 `VERIFY` 模式，在依赖、公共契约、迁移、版本、跨仓库修改等范围扩展前保留用户决策权。
+
+```bash
+bunx skills add https://github.com/JinJieBeWater/toolkit --skill tight-execution -g
+```
 
 ## Pi Loom
 
