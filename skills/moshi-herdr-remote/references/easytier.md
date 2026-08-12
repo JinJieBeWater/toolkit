@@ -92,6 +92,8 @@ network_name = "easytier"
 network_secret = "<PHONE_ETK>"
 ```
 
+现有网络新增设备时，导入内容只有该设备的新 ETK 与上述最小 TOML；不复制 Mac 或其他设备配置中的 instance_id、虚拟 IP（`dhcp = true` 由网络自动分配）或本地 private key。
+
 启动后：安卓设置把 EasyTier **电池/后台限制设为不限制**（杀后台 → mesh 掉线 → 终端报连接错误）。
 
 **完成标准**：Mac 侧 `easytier-cli -p 127.0.0.1:15888 peer` 出现移动设备节点；`p2p ... udp` 表示打洞直连，`relay`/`https-udp` 表示兜底中继。

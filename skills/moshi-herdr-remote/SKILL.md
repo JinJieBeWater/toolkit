@@ -65,6 +65,8 @@ moshi-hook host setup \
   --name "<MAC_NAME> via EasyTier"
 ```
 
+主机选择：Tailscale stopped 或未选 Bonjour 时，选 **Enter another hostname or IP**，填写 `easytier-cli -p 127.0.0.1:15888 peer` 的 **Local** EasyTier IP。
+
 `host setup` 提示时暂停，让用户在 Moshi App 完成 Easy Pair。再配 Agent hook bridge：从 App 的 Integrations 获取 pairing token，通过隐藏输入传给 CLI。
 
 ```zsh
@@ -111,4 +113,5 @@ herdr status server
 - Moshi 保存并使用 EasyTier 虚拟 IP；路由器不做公网 22 端口转发。macOS Remote Login 仍可能从局域网及其他主机接口访问。
 - EasyTier 设备密钥、Moshi pairing token、SSH 私钥和 Agent 凭据不进入仓库、日志摘录或 prompt。
 - 每台 EasyTier 设备使用独立密钥；Easy Pair 只把移动设备生成的 SSH 公钥写入 Mac。
+- 泄露凭据：停止传播旧值。EasyTier ETK → 重新生成并更新 TOML；Moshi pairing token → 撤销旧配对/token 并重新 Easy Pair；SSH 私钥 → 新建 keypair、移除 Mac `authorized_keys` 中的旧公钥并重新 Easy Pair；Agent/provider 凭据 → 撤销并重新发放。
 - 启用 hooks 前告知用户：通知摘要和少量 prompt/response/approval 文本会经过 Moshi 服务；源码、完整 transcript 和终端流量不经过该服务。
