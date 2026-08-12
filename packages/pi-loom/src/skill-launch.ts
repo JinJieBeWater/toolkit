@@ -103,7 +103,7 @@ Local HITL
 Local HITL stays in this child pane. Ask complete user questions here and wait here. Do not report ordinary user decisions upstream.
 
 Return contract
-Task ID: ${input.returnChannel.taskId}.
+Task ID: ${input.returnChannel.taskId}. In loom_report, pass this task ID as the required assignmentId.
 After durable output and verification, Report exactly once: call loom_report exactly once as your final tool action before your final response. It formats and delivers the canonical report. For a review, investigation, or other long result, put full Markdown in loom_report \`details\` and keep the canonical fields as short status inline. For manual fallback, use a parent-preallocated private temporary Markdown path, write it atomically, and message only the path with short status. If loom_report is unavailable but herdr_agent is available, use herdr_agent prompt with target ${input.returnChannel.parentPaneId}, wait false, and this exact short report:
 [Herdr child report][${input.returnChannel.taskId}][COMPLETED|BLOCKED]\nOutcome: <bounded result or blocker>\nDurable pointers: <issue, file, commit, artifact, or transcript>\nChanged: <files/refs, or none>\nVerification: <checks and result>\nNeed/next: <required input or parent action>\nChild pane: <pane-id> (<role>; workstream: <workstream>)
 If neither reporting tool is available, preserve the short report and artifact path in this pane and final response; do not inject raw pane input.

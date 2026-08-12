@@ -37,12 +37,19 @@ export type SkillLaunchHerdrPort = Pick<
   | "waitAgentStatus"
 >;
 
+export type HelperReuseScope = {
+  cwd: string;
+  access: "read" | "write";
+  files: string[];
+};
+
 export type HelperBinding = {
   alias: string;
   paneId: string;
   terminalId?: string;
   workflowOwned: true;
   reuseRole?: string;
+  reuseScope?: HelperReuseScope;
   managedWorktree?: {
     workspaceId: string;
     path: string;
@@ -84,6 +91,19 @@ function parseHelperBindings(path: string): HelperBinding[] {
     if (
       binding.reuseRole !== undefined &&
       (typeof binding.reuseRole !== "string" || binding.reuseRole.trim().length === 0)
+    ) {
+      throw new Error("invalid helper binding store");
+    }
+    const reuseScope = binding.reuseScope;
+    if (
+      reuseScope !== undefined &&
+      (!reuseScope ||
+        typeof reuseScope !== "object" ||
+        typeof reuseScope.cwd !== "string" ||
+        reuseScope.cwd.length === 0 ||
+        (reuseScope.access !== "read" && reuseScope.access !== "write") ||
+        !Array.isArray(reuseScope.files) ||
+        reuseScope.files.some((file) => typeof file !== "string" || file.length === 0))
     ) {
       throw new Error("invalid helper binding store");
     }
@@ -150,6 +170,7 @@ export class HelperDirectory {
         binding.terminalId,
         binding.managedWorktree,
         binding.reuseRole,
+        binding.reuseScope,
         false,
       );
     }
@@ -161,8 +182,9 @@ export class HelperDirectory {
     terminalId: string,
     managedWorktree?: HelperBinding["managedWorktree"],
     reuseRole?: string,
+    reuseScope?: HelperReuseScope,
   ): void {
-    this.#bind(alias, paneId, terminalId, managedWorktree, reuseRole, true);
+    this.#bind(alias, paneId, terminalId, managedWorktree, reuseRole, reuseScope, true);
   }
 
   reserveManagedWorktree(
@@ -170,8 +192,17 @@ export class HelperDirectory {
     paneId: string,
     managedWorktree: NonNullable<HelperBinding["managedWorktree"]>,
     reuseRole?: string,
+    reuseScope?: HelperReuseScope,
   ): void {
-    this.#bind(alias, paneId, undefined, managedWorktree, reuseRole, false);
+    this.#bind(
+      alias,
+      paneId,
+      undefined,
+      managedWorktree,
+      reuseRole,
+      reuseScope ? { ...reuseScope, cwd: managedWorktree.path } : undefined,
+      false,
+    );
     this.#persist();
   }
 
@@ -181,6 +212,7 @@ export class HelperDirectory {
     terminalId: string | undefined,
     managedWorktree: HelperBinding["managedWorktree"],
     reuseRole: string | undefined,
+    reuseScope: HelperReuseScope | undefined,
     persist: boolean,
   ): void {
     if (reuseRole !== undefined && !reuseRole.trim()) {
@@ -202,6 +234,7 @@ export class HelperDirectory {
       ...(terminalId ? { terminalId } : {}),
       workflowOwned: true,
       ...(reuseRole ? { reuseRole } : {}),
+      ...(reuseScope ? { reuseScope: structuredClone(reuseScope) } : {}),
       ...(managedWorktree ? { managedWorktree: structuredClone(managedWorktree) } : {}),
     });
     try {
@@ -314,6 +347,7 @@ type SkillLaunchInput = {
   callerCwd?: string;
   launch: CompiledPersistentHelperLaunch;
   reuseRole?: string;
+  reuseScope?: HelperReuseScope;
   worktree?: { branch: string; base?: string; path?: string };
 };
 
@@ -482,6 +516,7 @@ export class SkillLaunchExecutor {
             branch: managedWorktree.branch,
           },
           input.reuseRole,
+          input.reuseScope,
         );
       } catch (error) {
         return {
@@ -679,6 +714,7 @@ export class SkillLaunchExecutor {
             }
           : undefined,
         input.reuseRole,
+        input.reuseScope ? { ...input.reuseScope, cwd: launch.command.cwd } : undefined,
       );
     } catch (error) {
       promptContract.cleanup();

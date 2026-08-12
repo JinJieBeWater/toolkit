@@ -67,6 +67,17 @@ type ExistingHelperResult = {
   helper: HelperContextView;
   guidance: "Reuse existing helper or choose another name";
 };
+type ReusedHelperResult = {
+  kind: "reused";
+  helperAlias: string;
+  assignmentId: string;
+};
+type PromptingPort = {
+  prompt: (input: {
+    paneId: string;
+    initialPrompt: string;
+  }) => Promise<{ paneId: string; terminalId: string }>;
+};
 type ReportArtifact = {
   path: string;
   cleanup: () => Promise<void>;
@@ -80,6 +91,7 @@ export type LoomExtensionOptions = {
   reportArtifactWriter?: (details: string) => Promise<ReportArtifact>;
   retirement?: RetirementPort;
   discovery?: HelperDiscoveryPort;
+  prompting?: PromptingPort;
 };
 
 function attachHelperDirectory(
@@ -163,15 +175,27 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
   const retirement =
     options.retirement ?? new SkillRetirementExecutor({ herdr: herdr(), directory });
   const discovery = options.discovery ?? new SkillHelperDiscovery({ herdr: herdr(), directory });
+  const prompting = options.prompting ?? {
+    prompt: async (input: { paneId: string; initialPrompt: string }) => {
+      const view = await herdr().promptAgent(
+        input.paneId,
+        input.initialPrompt,
+        ["working"],
+        60_000,
+      );
+      return { paneId: view.paneId, terminalId: view.terminalId };
+    },
+  };
   const childRole = Boolean(env.PI_HERDR_PARENT_PANE_ID && env.PI_HERDR_TASK_ID);
   const reportDeliveries = new Map<
-    "COMPLETED" | "BLOCKED",
+    string,
     Promise<{ result: SkillReportDeliveryResult; artifactPath?: string }>
   >();
 
   const startPersistent = async (
     input: {
       name: string;
+      assignmentId: string;
       workstream?: string;
       role: string;
       task: string;
@@ -187,7 +211,7 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       callerCwd: string;
     },
     ctx: Pick<ExtensionContext, "sessionManager">,
-  ): Promise<SkillLaunchResult | ExistingHelperResult> => {
+  ): Promise<SkillLaunchResult | ExistingHelperResult | ReusedHelperResult> => {
     attachHelperDirectory(directory, ctx);
     if (!/^[a-z][a-z0-9_-]{0,31}$/.test(input.name)) {
       throw new Error("name must match Herdr agent name grammar");
@@ -204,19 +228,6 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         reason: "global helper discovery is unavailable before launch",
       };
     }
-    const existing = discovered.helpers.find(
-      (helper) =>
-        helper.name === input.name &&
-        (helper.relation === "owned" || helper.relation === "external"),
-    );
-    if (existing) {
-      return {
-        kind: "existing-helper",
-        helperAlias: input.name,
-        helper: existing,
-        guidance: "Reuse existing helper or choose another name",
-      };
-    }
     const scope =
       input.access === "read"
         ? { access: "read-only" as const, allowedFiles: input.files }
@@ -227,33 +238,93 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
           };
     const extensionPath = options.extensionPath ?? env.PI_LOOM_EXTENSION_PATH;
     const cwd = input.checkout.kind === "existing" ? input.checkout.path : input.callerCwd;
-    const launch = compilePersistentHelperLaunch({
-      ...(input.workstream ? { workstreamLabel: input.workstream } : {}),
-      roleLabel: input.role,
-      cwd,
-      ...(extensionPath ? { extensionPath } : {}),
-      ...(input.model ? { model: input.model } : {}),
-      ...(input.thinking ? { thinking: input.thinking } : {}),
-      objective: input.task,
-      scope,
-      returnChannel: {
-        taskId: input.name,
-        parentPaneId: paneId,
-        durableResult: input.deliverable,
-        coordinatorPaneId: env.PI_HERDR_COORDINATOR_PANE_ID ?? paneId,
-      },
-      reuse: input.keep
-        ? { kind: "retain", role: input.role }
-        : { kind: "retire-after-integration" },
-      descendantResponsibilities: input.descendants,
-    });
+    const compileLaunch = (taskId: string) =>
+      compilePersistentHelperLaunch({
+        ...(input.workstream ? { workstreamLabel: input.workstream } : {}),
+        roleLabel: input.role,
+        cwd,
+        ...(extensionPath ? { extensionPath } : {}),
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.thinking ? { thinking: input.thinking } : {}),
+        objective: input.task,
+        scope,
+        returnChannel: {
+          taskId,
+          parentPaneId: paneId,
+          durableResult: input.deliverable,
+          coordinatorPaneId: env.PI_HERDR_COORDINATOR_PANE_ID ?? paneId,
+        },
+        reuse: input.keep
+          ? { kind: "retain", role: input.role }
+          : { kind: "retire-after-integration" },
+        descendantResponsibilities: input.descendants,
+      });
+    const existing = discovered.helpers.find(
+      (helper) =>
+        helper.name === input.name &&
+        (helper.relation === "owned" || helper.relation === "external"),
+    );
+    if (existing) {
+      const binding = directory.resolve(input.name);
+      const reusable =
+        input.checkout.kind !== "worktree" &&
+        existing.relation === "owned" &&
+        (existing.state === "idle" || existing.state === "done") &&
+        binding?.reuseRole === input.role &&
+        binding.reuseScope !== undefined &&
+        binding.reuseScope.access === input.access &&
+        binding.reuseScope.cwd === cwd &&
+        binding.reuseScope.files.length === input.files.length &&
+        binding.reuseScope.files.every((file, index) => file === input.files[index]);
+      if (reusable) {
+        try {
+          const prompted = await prompting.prompt({
+            paneId: binding!.paneId,
+            initialPrompt: compileLaunch(input.assignmentId).initialPrompt,
+          });
+          if (prompted.paneId !== binding!.paneId || prompted.terminalId !== binding!.terminalId) {
+            return {
+              kind: "reconcile",
+              helperAlias: input.name,
+              reason: "helper reuse prompt confirmed a different pane or terminal than the binding",
+            };
+          }
+          return {
+            kind: "reused",
+            helperAlias: input.name,
+            assignmentId: input.assignmentId,
+          };
+        } catch (error) {
+          return {
+            kind: "reconcile",
+            helperAlias: input.name,
+            reason: `helper reuse assignment is unconfirmed: ${(error as Error).message}`,
+          };
+        }
+      }
+      return {
+        kind: "existing-helper",
+        helperAlias: input.name,
+        helper: existing,
+        guidance: "Reuse existing helper or choose another name",
+      };
+    }
     try {
       return await launchExecutor.execute({
         helperAlias: input.name,
         callerPaneId: paneId,
         callerCwd: input.callerCwd,
-        launch,
-        ...(input.keep ? { reuseRole: input.role } : {}),
+        launch: compileLaunch(input.name),
+        ...(input.keep
+          ? {
+              reuseRole: input.role,
+              reuseScope: {
+                cwd,
+                access: input.access,
+                files: [...input.files],
+              },
+            }
+          : {}),
         ...(input.checkout.kind === "worktree"
           ? {
               worktree: {
@@ -273,7 +344,13 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
     }
   };
 
-  const startResult = (result: SkillLaunchResult | ExistingHelperResult) => {
+  const startResult = (result: SkillLaunchResult | ExistingHelperResult | ReusedHelperResult) => {
+    if (result.kind === "reused") {
+      return {
+        content: [{ type: "text" as const, text: `Helper ${result.helperAlias} assigned` }],
+        details: result,
+      };
+    }
     if (result.kind === "started") {
       return {
         content: [{ type: "text" as const, text: `Helper ${result.helperAlias} started` }],
@@ -310,16 +387,18 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
   };
 
   const deliverReport = (input: {
+    assignmentId: string;
     status: "COMPLETED" | "BLOCKED";
     outcome: string;
     durablePointers: string[];
     changed: string[];
     verification: string[];
     needNext: string;
-  }) =>
-    reporting.deliver({
-      taskId: env.PI_HERDR_TASK_ID!,
-      ...input,
+  }) => {
+    const { assignmentId, ...report } = input;
+    return reporting.deliver({
+      taskId: assignmentId,
+      ...report,
       childPaneId: paneId,
       childLabel: env.PI_HERDR_CHILD_LABEL ?? "helper",
       ...(env.PI_HERDR_WORKSTREAM_LABEL ? { workstreamLabel: env.PI_HERDR_WORKSTREAM_LABEL } : {}),
@@ -328,13 +407,15 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         ? { coordinatorPaneId: env.PI_HERDR_COORDINATOR_PANE_ID }
         : {}),
     });
+  };
 
   if (childRole) {
     pi.registerTool({
       name: "loom_report",
       label: "Loom Report",
-      description: "Return one verified result to the direct Pi Loom owner",
+      description: "Return one verified assignment result to the direct Pi Loom owner",
       parameters: Type.Object({
+        assignmentId: Type.String({ minLength: 1 }),
         status: Type.Union([Type.Literal("COMPLETED"), Type.Literal("BLOCKED")]),
         summary: Type.String({ minLength: 1 }),
         details: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REPORT_DETAILS_LENGTH })),
@@ -344,18 +425,24 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         next: Type.String({ minLength: 1 }),
       }),
       async execute(_toolCallId, params) {
-        const existing = reportDeliveries.get(params.status);
+        const key = `${params.assignmentId}:${params.status}`;
+        const existing = reportDeliveries.get(key);
         if (existing) {
           await existing;
           return {
             content: [{ type: "text" as const, text: "Report already delivered" }],
-            details: { delivered: "duplicate", taskId: env.PI_HERDR_TASK_ID },
+            details: {
+              delivered: "duplicate",
+              assignmentId: params.assignmentId,
+              status: params.status,
+            },
           };
         }
         const delivery = (async () => {
           const artifact = params.details ? await reportArtifactWriter(params.details) : undefined;
           try {
             const result = await deliverReport({
+              assignmentId: params.assignmentId,
               status: params.status,
               outcome: params.summary,
               durablePointers: artifact ? [...params.pointers, artifact.path] : params.pointers,
@@ -369,13 +456,13 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
             throw error;
           }
         })();
-        reportDeliveries.set(params.status, delivery);
+        reportDeliveries.set(key, delivery);
         let delivered: { result: SkillReportDeliveryResult; artifactPath?: string };
         try {
           delivered = await delivery;
         } catch (error) {
-          if (reportDeliveries.get(params.status) === delivery) {
-            reportDeliveries.delete(params.status);
+          if (reportDeliveries.get(key) === delivery) {
+            reportDeliveries.delete(key);
           }
           throw error;
         }
@@ -388,9 +475,11 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
                 : `Report delivered through ${delivered.result.delivered}`,
             },
           ],
-          details: delivered.artifactPath
-            ? { ...delivered.result, artifactPath: delivered.artifactPath }
-            : delivered.result,
+          details: {
+            ...delivered.result,
+            assignmentId: params.assignmentId,
+            ...(delivered.artifactPath ? { artifactPath: delivered.artifactPath } : {}),
+          },
         };
       },
     });
@@ -399,7 +488,8 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
   pi.registerTool({
     name: "loom_start",
     label: "Loom Start",
-    description: "Start one persistent Pi helper in a current, existing, or managed checkout",
+    description:
+      "Start one persistent Pi helper in a current, existing, or managed checkout, or reassign an owned sticky helper",
     parameters: Type.Object({
       name: Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" }),
       task: Type.String({ minLength: 1 }),
@@ -407,18 +497,19 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
       workstream: Type.String({ minLength: 1 }),
       role: Type.Optional(Type.String({ minLength: 1 })),
       access: Type.Union([Type.Literal("read"), Type.Literal("write")]),
-      files: Type.Array(Type.String(), { minItems: 1 }),
+      files: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
       writeApproved: Type.Optional(Type.Boolean({ default: false })),
       deliverable: Type.Optional(Type.String({ minLength: 1 })),
       keep: Type.Optional(Type.Boolean({ default: false })),
       model: Type.Optional(Type.String()),
       thinking: Type.Optional(thinkingSchema),
     }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       return startResult(
         await startPersistent(
           {
             name: params.name,
+            assignmentId: toolCallId,
             workstream: params.workstream,
             role: params.role ?? "helper",
             task: params.task,
@@ -483,7 +574,8 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
         discovered.helpers.some(
           (candidate) => candidate.name === params.name && candidate.relation === "missing",
         );
-      if (missing) {
+      const pendingWorktree = missing && binding?.managedWorktree && !binding.terminalId;
+      if (missing && !pendingWorktree) {
         const result: SkillRetirementResult = {
           helperAlias: params.name,
           action: "reconcile",
@@ -494,7 +586,7 @@ export function registerLoomExtension(pi: ExtensionAPI, options: LoomExtensionOp
           details: result,
         };
       }
-      if (!helper) {
+      if (!helper && !pendingWorktree) {
         const result: SkillRetirementResult = {
           helperAlias: params.name,
           action: "not-owned",

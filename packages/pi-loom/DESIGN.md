@@ -10,6 +10,7 @@
 - Herdr 决定 agent 与 terminal 生命周期。
 - 独立 `handoff` Skill 决定 Transfer 交接文件格式。
 - 扩展只实现持久 helper 的启动、报告、状态和回收。
+- `access`、`files` 与 `writeApproved` 是 owner 对 agent 的协作合约，不是操作系统沙箱或不可伪造 capability。
 
 ## 产品语言
 
@@ -17,6 +18,7 @@
 - **Contribution**：当前 owner 保持责任，另一个 Pi 返回有边界的结果。
 - **Helper**：Herdr 中保留上下文的 Pi。
 - **Checkout lease**：helper 使用的 checkout；已有 checkout 为 borrowed，Loom 创建的 worktree 为 owned。
+- **Assignment**：单次 `loom_start` 派发的有界工作单元。首次启动的 Task ID 是 helper name；sticky helper 复用时以该次 `loom_start` 的 toolCallId 为 assignmentId。
 - **Pending lease**：worktree 已确认但 helper terminal identity 尚未确认；agent launch 前先持久化，直到 agent 完成改绑或 owned checkout 被安全回收。
 - **Workstream**：同一 Herdr tab 中的一组相关工作。
 - **Sticky retention**：`loom_start keep:true` 持久化的复用策略；assignment 完成后继续保留 helper，直到 owner 显式 RELEASE。
@@ -45,10 +47,12 @@
 
 binding 加同名 live agent 的 pane/terminal 精确 identity 才是 `owned`。无匹配 live agent 的 binding 是 `missing` current-session-owned lease；任何未精确匹配的 live context 是 `external`。输出按公开字段稳定排序。
 
-`loom_start` 在任何 layout、checkout 或 worktree mutation 前做全局同名 live preflight。找到 `owned` 或 `external` live helper 时返回 `existing-helper`，提示 reuse 或改名；discovery 不可用时以 `DISCOVERY_UNAVAILABLE` 拒绝且不发送 mutation。Herdr 全局 agent-name uniqueness 仍是最终并发权威；无 cross-process lock，之后 launch 歧义沿用 existing reconcile safety。`loom_close` 只对当前 `current-session` 的 `owned` binding 进入 retirement；external 或未绑定 name 返回 `not-owned`，不调用 retirement。`missing` 返回 `helper-live-identity-missing` reconcile，不宣称 live owned，也不触发 retirement。
+`loom_start` 在任何 mutation 前做全局同名 live preflight。符合原 role、resolved cwd、access、files 边界的 `idle`/`done` owned sticky helper 可接收新 assignment；显式 worktree、busy、legacy、边界不兼容或 external helper 返回 `existing-helper`。discovery 不可用时返回 `DISCOVERY_UNAVAILABLE`。Herdr 的全局 name uniqueness 仍是并发权威。
+
+`loom_close` 只操作当前 session binding：external 或未绑定 name 返回 `not-owned`；普通 `missing` 返回 reconcile；无 terminal 的 pending managed worktree 可进入 identity-guarded retirement。
 
 terminal report 保持短小；review、investigation 等长结果先写入私有临时 Markdown artifact，canonical report 只携带 durable pointer。artifact 写入失败时不得开始 delivery；delivery 失败时仅清理该次受控 artifact，并允许重试。
 
 checkout workspace identity 优先使用 Herdr 显式 worktree checkout；普通 workspace 仅在其所有可解析 pane cwd 归一到同一 Git checkout 时采用 fallback。target checkout 必须唯一匹配一个 workspace，歧义时在 mutation 前拒绝。
 
-`COMPLETED` 只结束当前 assignment，不释放 helper 或 workstream。sticky helper 的 session binding 保存 reuse role；`loom_close` 默认 retain，只有 `release:true` 才进入 retirement。
+`COMPLETED` 只结束当前 assignment，不释放 helper 或 workstream。sticky helper 的 session binding 保存 reuse role；`loom_close` 默认 retain，只有 `release:true` 才进入 retirement。`loom_report` 以 assignmentId+status 去重并用 assignmentId 作为交付 taskId。
