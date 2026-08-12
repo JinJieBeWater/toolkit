@@ -32,7 +32,7 @@ Define task, checkout, workstream, role, read/write access, allowed files, deliv
 
 ## Persistent helper branch
 
-1. Read [layout.md](layout.md). Use `loom_status` when selecting or reusing a persistent context. Its name filter excludes unnamed contexts; inspect unfiltered status when collision context matters. If `loom_start` is available, call it once. It globally preflights same-name live Pi helpers before any mutation: `existing-helper` means reuse that context or choose another name; `DISCOVERY_UNAVAILABLE` means no mutation occurred. Otherwise it acquires the requested checkout, chooses its root pane or exact-affinity layout, starts Pi, binds return channel, and sends the task.
+1. Read [layout.md](layout.md). Use `loom_status` when selecting or reusing a persistent context. Its name filter excludes unnamed contexts; inspect unfiltered status when collision context matters. If `loom_start` is available, call it once. It globally preflights same-name live Pi helpers before any mutation: `existing-helper` means reuse that context or choose another name; `DISCOVERY_UNAVAILABLE` means no mutation occurred. Otherwise it acquires the requested checkout, chooses its root pane or exact-affinity layout, starts Pi, binds return channel, and sends the task. Reuse an eligible owned sticky helper by calling `loom_start` again with the same name and boundary; `external` helpers remain uncontrollable.
 2. On `started`, end the turn. Wait for `loom_report`; do not poll.
 3. Route the next child state:
 

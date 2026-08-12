@@ -20,7 +20,7 @@ A pane is retirable only when every condition holds:
 
 ## Select one executor
 
-- For a helper bound by current Pi `loom_start`, call `loom_close` with integration, durable evidence, descendant settlement, pending-work, running-service, keep, release, and execute decisions. `not-owned` confirms an external context and makes no retirement call. A `missing` `current-session` lease returns `helper-live-identity-missing` reconcile without retirement; it is never a live owned context. Preserve a reconcile result for inspection.
+- For a helper bound by current Pi `loom_start`, call `loom_close` with integration, durable evidence, descendant settlement, pending-work, running-service, keep, release, and execute decisions. Preserve `not-owned` or reconcile results for inspection.
 - `loom_start keep:true` persists sticky retention across session reloads. `loom_close` retains that helper unless current user confirms review or interaction is finished and owner passes `release:true`; only then may normal retirement proceed.
 - Per-call `loom_close keep:true` remains a retain override for compatibility.
 - A borrowed checkout closes only the helper pane. An owned worktree is removed with `force=false` only when the helper is its sole pane; dirty, shared, or identity-mismatched worktrees remain for inspection.
