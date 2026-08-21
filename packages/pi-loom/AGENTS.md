@@ -1,7 +1,0 @@
-- 每个公开接口行为按一个 red/green 周期推进。
-- 修改所有权、术语、外部权威或产品 seams 前，读取 `DESIGN.md`。
-- Pi Loom 只负责所有权路由与持久 helper mechanics；Pi 和 Herdr 通过内部 adapter 隔离。
-- Herdr 适配以当前最新协议为目标；升级时同步代码、测试与文档。
-- 普通测试只使用仓库内资源；全局安装或链接需要用户明确要求。
-- 结果使用结构化数据和 opaque model view；capability token 与 raw socket path 不进入模型上下文。
-- 完成前运行 `bun run check` 和 `bun run pack:check`。
