@@ -2,7 +2,7 @@
 
 这份清单记录我日常使用的 Pi packages、资源过滤、Skills 和本地 integrations，供选型和手动恢复参考。它不是完整配置备份，也不建议全部安装；Pi package 可以执行代码，安装前应检查源码。
 
-更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **32 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
+更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **30 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
 
 ## Pi packages
 
@@ -10,7 +10,6 @@
 
 - **原生**：由 Pi 直接加载 package 声明的资源。
 - **适配/direct**、**适配/deferred**：package 的 `extensions` 设为 `[]`，但本地 `deferred-tools` 适配层仍加载上游工具，分别直接公开或按需发现；不等于功能被禁用。
-- **不加载**：已安装，但当前没有加载其 extension，也没有经适配层提供工具。
 
 | Package                                                | 资源                       | 加载方式                    | 用途                                            |
 | ------------------------------------------------------ | -------------------------- | --------------------------- | ----------------------------------------------- |
@@ -20,7 +19,6 @@
 | `npm:@gotgenes/pi-permission-system`                   | Extension                  | 原生                        | 对工具调用执行权限策略                          |
 | `npm:@howaboua/pi-cache-hit-predictor`                 | Extension                  | 原生                        | 预测模型或 reasoning 切换后的 prompt cache 命中 |
 | `git:github.com/angristan/pi-extensions`               | Extension collection       | 原生，仅 12 项              | TUI 渲染、通知和统计                            |
-| `npm:@injaneity/pi-computer-use`                       | Extension                  | 不加载                      | 桌面观察和控制；当前未启用                      |
 | `npm:@howaboua/pi-codex-conversion`                    | Extension                  | 原生                        | 为 Codex 模型调整工具与 prompt 契约             |
 | `npm:@furbyhaxx/pi-session-naming`                     | Extension                  | 原生                        | 自动命名、浏览和管理 sessions                   |
 | `npm:@howaboua/pi-auto-trees`                          | Extension                  | 原生                        | 通过 `/marker`、`/end` 推进增量长任务           |
@@ -43,7 +41,6 @@
 | `npm:@howaboua/pi-browser`                             | Extension                  | 原生，2 个入口              | 检查和控制已登录浏览器                          |
 | `npm:@howaboua/pi-skill-harness-and-agent-engineering` | Skill                      | 原生                        | Agent 工具、扩展、指令和缓存工作流              |
 | `npm:@howaboua/pi-agent-board`                         | Extension                  | 原生，2 个入口              | Agent 消息板与只读浏览器查看器                  |
-| `npm:pi-generative-ui`                                 | Extension                  | 不加载                      | 在原生窗口渲染 HTML/SVG；当前未启用             |
 | `~/my/tools/pi-lovely-mermaid`                         | Extension                  | 原生                        | 在 Pi 中渲染 Mermaid                            |
 | `npm:@howaboua/pi-notes-compaction`                    | Extension                  | 原生，2 个入口              | 持久 notes 与 notes 引导的上下文换窗            |
 
@@ -77,7 +74,7 @@
 }
 ```
 
-`footer`、`image-store`、`prevent-sleep` 不在白名单中；上游源码仍保留。
+`footer`、`image-store`、`prevent-sleep` 等 25 个独立入口不在白名单中；上游源码整体保留。未启用入口不等于目录未被复用，例如 `better-native-pi` 仍引用 `background-jobs/service.ts` 和 `image-store` 的辅助函数，不能直接删除这些目录。
 
 ### 其他 package filters
 
@@ -87,12 +84,10 @@
 [
   { "source": "npm:@geminixiang/pi-simplify", "extensions": [] },
   { "source": "npm:@upstash/context7-pi", "extensions": [] },
-  { "source": "npm:@injaneity/pi-computer-use", "extensions": [] },
   { "source": "npm:@juicesharp/rpiv-todo", "extensions": [] },
   { "source": "../../my/tools/pi-skill-manager", "extensions": [] },
   { "source": "npm:@ogulcancelik/pi-herdr-worktree-jump", "extensions": [] },
   { "source": "npm:@howaboua/pi-codex-imagegen", "extensions": [] },
-  { "source": "npm:pi-generative-ui", "extensions": [] },
   {
     "source": "git:github.com/DietrichGebert/ponytail",
     "skills": ["skills/ponytail-review/SKILL.md"]
