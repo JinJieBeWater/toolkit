@@ -2,7 +2,7 @@
 
 这份清单记录我日常使用的 Pi packages、资源过滤、Skills 和本地 integrations，供选型和手动恢复参考。它不是完整配置备份，也不建议全部安装；Pi package 可以执行代码，安装前应检查源码。
 
-更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **30 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
+更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **29 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
 
 ## Pi packages
 
@@ -33,7 +33,6 @@
 | `npm:pi-web-access`                                    | Extension                  | 原生                        | 多 provider Web search、fetch、PDF 和视频分析   |
 | `~/my/tools/pi-skill-manager`                          | Extension                  | 适配/deferred               | 管理可复用 Skills，不加载 memory 子系统         |
 | `npm:pi-autoresearch`                                  | Extension + Skill          | 原生                        | 运行、测量并保留或丢弃实验                      |
-| `npm:@ogulcancelik/pi-herdr-worktree-jump`             | Extension                  | 适配/deferred               | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
 | `npm:@howaboua/pi-codex-web-run`                       | Extension                  | 原生                        | Codex Web 搜索与导航                            |
 | `npm:@howaboua/pi-codex-imagegen`                      | Extension                  | 适配/deferred               | Codex 图像生成与编辑                            |
 | `npm:@howaboua/pi-shepherdr`                           | Extension                  | 原生                        | 持久、阻塞式或异步 Pi 子 agent                  |
@@ -86,7 +85,6 @@
   { "source": "npm:@upstash/context7-pi", "extensions": [] },
   { "source": "npm:@juicesharp/rpiv-todo", "extensions": [] },
   { "source": "../../my/tools/pi-skill-manager", "extensions": [] },
-  { "source": "npm:@ogulcancelik/pi-herdr-worktree-jump", "extensions": [] },
   { "source": "npm:@howaboua/pi-codex-imagegen", "extensions": [] },
   {
     "source": "git:github.com/DietrichGebert/ponytail",
@@ -99,16 +97,17 @@
 
 适配层位于 `~/.pi/agent/startup-optimization/deferred-tools.ts`，注册表为同目录的 `deferred-tools.json`：
 
-| 上游 package             | 工具                                                            | Exposure |
-| ------------------------ | --------------------------------------------------------------- | -------- |
-| `rpiv-todo`              | `todo`                                                          | direct   |
-| `pi-simplify`            | `simplify_candidates`、`code_smell_scan`、`code_smell_findings` | deferred |
-| `context7-pi`            | `resolve-library-id`、`query-docs`                              | deferred |
-| `pi-codex-imagegen`      | `imagegen`                                                      | deferred |
-| `pi-herdr-worktree-jump` | `herdr_worktree_jump`                                           | deferred |
-| 本地 `pi-skill-manager`  | `skill_manage`                                                  | deferred |
+| 上游 package            | 工具                                                            | Exposure |
+| ----------------------- | --------------------------------------------------------------- | -------- |
+| `rpiv-todo`             | `todo`                                                          | direct   |
+| `pi-simplify`           | `simplify_candidates`、`code_smell_scan`、`code_smell_findings` | deferred |
+| `context7-pi`           | `resolve-library-id`、`query-docs`                              | deferred |
+| `pi-codex-imagegen`     | `imagegen`                                                      | deferred |
+| 本地 `pi-skill-manager` | `skill_manage`                                                  | deferred |
 
-适配层未随本仓库分发。没有该适配层时，不要照抄这六个 package 的空 extension filter，否则工具不会加载；应保留其原生 extension。这里通过配置调用上游入口，不修改上游源码。
+这里记录的是注册策略，不保证每种执行模式都能发现工具；PCC Code/TS 会调整工具目录和原生搜索入口，当前组合尚未完成真实会话的发现与调用验证。
+
+适配层未随本仓库分发。没有该适配层时，不要照抄这五个 package 的空 extension filter，否则工具不会加载；应保留其原生 extension。这里通过配置调用上游入口，不修改上游源码。
 
 ## Skills 来源
 
