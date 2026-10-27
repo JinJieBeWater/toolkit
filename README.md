@@ -1,46 +1,23 @@
-# Spencer Agent Toolkit
+# 我的 Pi 配置
 
-个人 Agent 工具集合。目前包含 Tight Execution 和 Lark Skill；另附[我的 Pi 扩展清单](docs/pi-extensions.md)，记录当前 packages、启用状态和恢复方式。
+记录我日常使用的 Pi packages、资源过滤、Skills 与使用偏好，不展示安装版本号。
 
-## 怎么选
+## 配置清单
 
-| 需求                                                                     | 选择                 |
-| ------------------------------------------------------------------------ | -------------------- |
-| 固定讨论、实施或验收模式，控制改动范围与关键决策                         | `tight-execution`    |
-| 操作飞书消息、文档、云盘、日历等工作区能力                               | `lark` Skill         |
+[`docs/pi-extensions.md`](docs/pi-extensions.md) 包含：
 
-安装工具无需手动 clone 仓库；安装命令会自行下载。
+- Packages 用途、加载方式与资源 filters
+- 精选 TUI 子扩展、工具适配与 Skills 来源
+- 原生规则入口、推理偏好与本地 integrations
+- 手动恢复方式及不能由本仓库恢复的部分
 
-## Tight Execution
+只发布脱敏清单和必要配置片段，不包含完整 `settings.json`、`models.json`、`auth.json`、token 或会话。个人适配层和本地项目未随仓库分发，不能直接一键恢复；安装第三方 package 前应先检查源码。
 
-固定 `DISCUSS`、`IMPLEMENT` 或 `VERIFY` 模式，在依赖、公共契约、迁移、版本、跨仓库修改等范围扩展前保留用户决策权。
+## 维护
 
-```bash
-bunx skills add https://github.com/JinJieBeWater/toolkit --skill tight-execution -g
-```
-
-## Lark Skill
-
-封装官方 `larksuite/cli` Skills，通过 `lark-cli` 操作飞书/Lark 消息、文档、云盘、Wiki、Base、日历、任务等工作区能力。
+修改后运行仓库检查：
 
 ```bash
-bunx skills add https://github.com/JinJieBeWater/toolkit --skill lark -g
-```
-
-需要安装 `lark-cli` 并完成飞书/Lark 应用授权。首次使用会通过 `git` 联网同步官方指南；后续运行 `skills/lark/scripts/sync-upstream.sh` 可主动更新。
-
-## 我的 Pi 扩展清单
-
-[`docs/pi-extensions.md`](docs/pi-extensions.md) 记录我当前安装的 Pi packages、启用状态、bundled Skills、精选 TUI 子扩展和本地 integrations，并提供用途说明与手动恢复命令。清单用于公开参考，不包含模型配置、认证信息或 token；安装第三方 package 前应先检查源码。
-
-## 开发
-
-只有修改源码时才需要 clone：
-
-```bash
-git clone https://github.com/JinJieBeWater/toolkit.git
-cd toolkit
-bun install
 bun run check
 ```
 

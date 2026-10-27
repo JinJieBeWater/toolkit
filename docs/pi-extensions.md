@@ -2,7 +2,7 @@
 
 这份清单记录我日常使用的 Pi packages、资源过滤、Skills 和本地 integrations，供选型和手动恢复参考。它不是完整配置备份，也不建议全部安装；Pi package 可以执行代码，安装前应检查源码。
 
-快照环境：Pi `1.4.0`，更新于 2026-10-27。当前配置 **32 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
+更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **32 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
 
 ## Pi packages
 
@@ -12,42 +12,42 @@
 - **适配/direct**、**适配/deferred**：package 的 `extensions` 设为 `[]`，但本地 `deferred-tools` 适配层仍加载上游工具，分别直接公开或按需发现；不等于功能被禁用。
 - **不加载**：已安装，但当前没有加载其 extension，也没有经适配层提供工具。
 
-| Package                                                | 当前版本 | 资源                       | 加载方式                    | 用途                                            |
-| ------------------------------------------------------ | -------: | -------------------------- | --------------------------- | ----------------------------------------------- |
-| `npm:@geminixiang/pi-simplify`                         |    0.2.0 | Extension                  | 适配/deferred               | 检查变更的复用、质量和效率                      |
-| `npm:@ogulcancelik/pi-herdr`                           |    0.4.1 | Extension                  | 原生                        | 控制 Herdr workspace、tab、pane 和 agent        |
-| `npm:@upstash/context7-pi`                             |    0.1.3 | Extension + Skill + Prompt | 工具适配/deferred，其余原生 | 查询 library 文档和示例                         |
-| `npm:@gotgenes/pi-permission-system`                   |   41.0.0 | Extension                  | 原生                        | 对工具调用执行权限策略                          |
-| `npm:@howaboua/pi-cache-hit-predictor`                 |    0.0.1 | Extension                  | 原生                        | 预测模型或 reasoning 切换后的 prompt cache 命中 |
-| `git:github.com/angristan/pi-extensions`               |    0.1.0 | Extension collection       | 原生，仅 12 项              | TUI 渲染、通知和统计                            |
-| `npm:@injaneity/pi-computer-use`                       |    0.5.1 | Extension                  | 不加载                      | 桌面观察和控制；当前未启用                      |
-| `npm:@howaboua/pi-codex-conversion`                    |    4.0.5 | Extension                  | 原生                        | 为 Codex 模型调整工具与 prompt 契约             |
-| `npm:@furbyhaxx/pi-session-naming`                     |    0.2.1 | Extension                  | 原生                        | 自动命名、浏览和管理 sessions                   |
-| `npm:@howaboua/pi-auto-trees`                          |   0.1.19 | Extension                  | 原生                        | 通过 `/marker`、`/end` 推进增量长任务           |
-| `npm:@howaboua/pi-ask`                                 |   0.0.17 | Extension                  | 原生                        | 交互决策、review 分流和 handoff                 |
-| `npm:@howaboua/pi-smart-btw`                           |    0.2.8 | Extension                  | 原生                        | 异步侧会话提问，再显式注入主会话                |
-| `npm:@howaboua/pi-skill-adversarial-qa`                |    0.0.1 | Skill                      | 原生                        | 用可执行反例验证边界、回归和不变量              |
-| `npm:@howaboua/pi-skill-agents-md`                     |    0.0.4 | Skill                      | 原生                        | 编写和维护分层 AGENTS.md                        |
-| `npm:@howaboua/pi-skill-anti-ai-copy`                  |    0.0.4 | Skill                      | 原生                        | 保留作者语气，减少空泛文案                      |
-| `npm:@howaboua/pi-skill-skill-creator`                 |    0.0.5 | Skill                      | 原生                        | 创建、验证和维护 Skills                         |
-| `git:github.com/DietrichGebert/ponytail`               |    5.3.2 | Extension + Skill          | 原生，Skill 白名单          | 最小实现模式与 `ponytail-review`                |
-| `npm:@juicesharp/rpiv-todo`                            |   2.15.0 | Extension                  | 适配/direct                 | 持久 todo 与实时 overlay                        |
-| `npm:pi-web-access`                                    |   0.45.0 | Extension                  | 原生                        | 多 provider Web search、fetch、PDF 和视频分析   |
-| `~/my/tools/pi-skill-manager`                          |    0.1.1 | Extension                  | 适配/deferred               | 管理可复用 Skills，不加载 memory 子系统         |
-| `npm:pi-autoresearch`                                  |    1.9.0 | Extension + Skill          | 原生                        | 运行、测量并保留或丢弃实验                      |
-| `npm:@ogulcancelik/pi-herdr-worktree-jump`             |    0.1.0 | Extension                  | 适配/deferred               | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
-| `npm:@howaboua/pi-codex-web-run`                       |    0.0.9 | Extension                  | 原生                        | Codex Web 搜索与导航                            |
-| `npm:@howaboua/pi-codex-imagegen`                      |   0.0.12 | Extension                  | 适配/deferred               | Codex 图像生成与编辑                            |
-| `npm:@howaboua/pi-shepherdr`                           |   0.2.24 | Extension                  | 原生                        | 持久、阻塞式或异步 Pi 子 agent                  |
-| `~/my/tools/pi-evals`                                  |    0.1.0 | Skill                      | 原生                        | 设计、审计和迭代 evals                          |
-| `npm:@howaboua/pi-browser`                             |   0.0.11 | Extension                  | 原生，2 个入口              | 检查和控制已登录浏览器                          |
-| `npm:@howaboua/pi-skill-harness-and-agent-engineering` |    0.0.7 | Skill                      | 原生                        | Agent 工具、扩展、指令和缓存工作流              |
-| `npm:@howaboua/pi-agent-board`                         |    0.0.4 | Extension                  | 原生，2 个入口              | Agent 消息板与只读浏览器查看器                  |
-| `npm:pi-generative-ui`                                 |    0.3.0 | Extension                  | 不加载                      | 在原生窗口渲染 HTML/SVG；当前未启用             |
-| `~/my/tools/pi-lovely-mermaid`                         |    0.1.0 | Extension                  | 原生                        | 在 Pi 中渲染 Mermaid                            |
-| `npm:@howaboua/pi-notes-compaction`                    |   0.0.10 | Extension                  | 原生，2 个入口              | 持久 notes 与 notes 引导的上下文换窗            |
+| Package                                                | 资源                       | 加载方式                    | 用途                                            |
+| ------------------------------------------------------ | -------------------------- | --------------------------- | ----------------------------------------------- |
+| `npm:@geminixiang/pi-simplify`                         | Extension                  | 适配/deferred               | 检查变更的复用、质量和效率                      |
+| `npm:@ogulcancelik/pi-herdr`                           | Extension                  | 原生                        | 控制 Herdr workspace、tab、pane 和 agent        |
+| `npm:@upstash/context7-pi`                             | Extension + Skill + Prompt | 工具适配/deferred，其余原生 | 查询 library 文档和示例                         |
+| `npm:@gotgenes/pi-permission-system`                   | Extension                  | 原生                        | 对工具调用执行权限策略                          |
+| `npm:@howaboua/pi-cache-hit-predictor`                 | Extension                  | 原生                        | 预测模型或 reasoning 切换后的 prompt cache 命中 |
+| `git:github.com/angristan/pi-extensions`               | Extension collection       | 原生，仅 12 项              | TUI 渲染、通知和统计                            |
+| `npm:@injaneity/pi-computer-use`                       | Extension                  | 不加载                      | 桌面观察和控制；当前未启用                      |
+| `npm:@howaboua/pi-codex-conversion`                    | Extension                  | 原生                        | 为 Codex 模型调整工具与 prompt 契约             |
+| `npm:@furbyhaxx/pi-session-naming`                     | Extension                  | 原生                        | 自动命名、浏览和管理 sessions                   |
+| `npm:@howaboua/pi-auto-trees`                          | Extension                  | 原生                        | 通过 `/marker`、`/end` 推进增量长任务           |
+| `npm:@howaboua/pi-ask`                                 | Extension                  | 原生                        | 交互决策、review 分流和 handoff                 |
+| `npm:@howaboua/pi-smart-btw`                           | Extension                  | 原生                        | 异步侧会话提问，再显式注入主会话                |
+| `npm:@howaboua/pi-skill-adversarial-qa`                | Skill                      | 原生                        | 用可执行反例验证边界、回归和不变量              |
+| `npm:@howaboua/pi-skill-agents-md`                     | Skill                      | 原生                        | 编写和维护分层 AGENTS.md                        |
+| `npm:@howaboua/pi-skill-anti-ai-copy`                  | Skill                      | 原生                        | 保留作者语气，减少空泛文案                      |
+| `npm:@howaboua/pi-skill-skill-creator`                 | Skill                      | 原生                        | 创建、验证和维护 Skills                         |
+| `git:github.com/DietrichGebert/ponytail`               | Extension + Skill          | 原生，Skill 白名单          | 最小实现模式与 `ponytail-review`                |
+| `npm:@juicesharp/rpiv-todo`                            | Extension                  | 适配/direct                 | 持久 todo 与实时 overlay                        |
+| `npm:pi-web-access`                                    | Extension                  | 原生                        | 多 provider Web search、fetch、PDF 和视频分析   |
+| `~/my/tools/pi-skill-manager`                          | Extension                  | 适配/deferred               | 管理可复用 Skills，不加载 memory 子系统         |
+| `npm:pi-autoresearch`                                  | Extension + Skill          | 原生                        | 运行、测量并保留或丢弃实验                      |
+| `npm:@ogulcancelik/pi-herdr-worktree-jump`             | Extension                  | 适配/deferred               | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
+| `npm:@howaboua/pi-codex-web-run`                       | Extension                  | 原生                        | Codex Web 搜索与导航                            |
+| `npm:@howaboua/pi-codex-imagegen`                      | Extension                  | 适配/deferred               | Codex 图像生成与编辑                            |
+| `npm:@howaboua/pi-shepherdr`                           | Extension                  | 原生                        | 持久、阻塞式或异步 Pi 子 agent                  |
+| `~/my/tools/pi-evals`                                  | Skill                      | 原生                        | 设计、审计和迭代 evals                          |
+| `npm:@howaboua/pi-browser`                             | Extension                  | 原生，2 个入口              | 检查和控制已登录浏览器                          |
+| `npm:@howaboua/pi-skill-harness-and-agent-engineering` | Skill                      | 原生                        | Agent 工具、扩展、指令和缓存工作流              |
+| `npm:@howaboua/pi-agent-board`                         | Extension                  | 原生，2 个入口              | Agent 消息板与只读浏览器查看器                  |
+| `npm:pi-generative-ui`                                 | Extension                  | 不加载                      | 在原生窗口渲染 HTML/SVG；当前未启用             |
+| `~/my/tools/pi-lovely-mermaid`                         | Extension                  | 原生                        | 在 Pi 中渲染 Mermaid                            |
+| `npm:@howaboua/pi-notes-compaction`                    | Extension                  | 原生，2 个入口              | 持久 notes 与 notes 引导的上下文换窗            |
 
-Git 快照分别为 `angristan/pi-extensions@6ac2de9`、`DietrichGebert/ponytail@09c434a`；这些 revision 不是当前安装源的版本锁。表中版本来自本机 manifest，未固定版本的安装源会获取安装时的最新版。三个 `~/my/tools/` 条目是独立本地项目，不随本仓库分发。
+安装源未锁定依赖，安装时会获取当时可用的包。三个 `~/my/tools/` 条目是独立本地项目，不随本仓库分发。
 
 `pi-notes-compaction` 是单独安装的配套包，不是 `pi-codex-conversion` 的第二个入口。Notes、Browser、Agent Board 各自声明了 changelog 和功能入口，因此不能把 38 个入口当作 38 项独立能力。
 
@@ -169,7 +169,7 @@ Package 自带的 16 个 Skills：
 
 `~/.pi/agent/extensions/pi-permission-system/` 当前只有配置文件，不是额外的扩展入口。`pi-hermes-skills-only.ts`、`superset-hooks.ts`、`shared-agent-context.ts` 已不再加载。
 
-Herdr 侧另有个人插件 `jinjiebewater.herdr@0.2.0`，不计入 Pi packages 或扩展入口数；其源码和宿主私有设置也未随本仓库分发。
+Herdr 侧另有个人插件 `jinjiebewater.herdr`，不计入 Pi packages 或扩展入口数；其源码和宿主私有设置也未随本仓库分发。
 
 ## 手动恢复
 
@@ -193,7 +193,6 @@ pi install git:github.com/angristan/pi-extensions
 
 ```bash
 pi list
-pi --version
 ```
 
 同时核对 package manifest、`~/.pi/agent/settings.json` 的 filters、适配层注册表，以及本地自动加载入口。本次只读资源检查为：扩展加载错误 0、Skills diagnostics 0、重复工具名 0；未对所有外部服务逐一发起请求。
