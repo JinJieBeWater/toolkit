@@ -2,7 +2,7 @@
 
 这份清单记录我日常使用的 Pi packages、资源过滤、Skills 和本地 integrations，供选型和手动恢复参考。它不是完整配置备份，也不建议全部安装；Pi package 可以执行代码，安装前应检查源码。
 
-更新于 2026-10-28，只展示配置选择与使用方式，不记录安装版本。当前配置 **30 个 package**；以用户主目录为 cwd，资源加载器发现 **39 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
+更新于 2026-10-28，只展示配置选择与使用方式，不记录安装版本。本机和 KVM 当前均配置 **30 个 package**；以各自主目录为 cwd，资源加载器均发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
 
 ## Pi packages
 
@@ -42,7 +42,7 @@
 | `npm:@howaboua/pi-agent-board`                         | Extension                  | 原生，2 个入口              | Agent 消息板与只读浏览器查看器                  |
 | `~/my/tools/pi-lovely-mermaid`                         | Extension                  | 原生                        | 在 Pi 中渲染 Mermaid                            |
 | `npm:@howaboua/pi-notes-compaction`                    | Extension                  | 原生，2 个入口              | 持久 notes 与 notes 引导的上下文换窗            |
-| `npm:@ogulcancelik/pi-herdr-worktree-jump`             | Extension                  | 原生                        | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
+| `npm:@ogulcancelik/pi-herdr-worktree-jump`             | Extension                  | 适配/deferred               | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
 
 安装源未锁定依赖，安装时会获取当时可用的包。三个 `~/my/tools/` 条目是独立本地项目，不随本仓库分发。
 
@@ -87,6 +87,7 @@
   { "source": "npm:@juicesharp/rpiv-todo", "extensions": [] },
   { "source": "../../my/tools/pi-skill-manager", "extensions": [] },
   { "source": "npm:@howaboua/pi-codex-imagegen", "extensions": [] },
+  { "source": "npm:@ogulcancelik/pi-herdr-worktree-jump", "extensions": [] },
   {
     "source": "git:github.com/DietrichGebert/ponytail",
     "skills": ["skills/ponytail-review/SKILL.md"]
@@ -98,17 +99,18 @@
 
 适配层位于 `~/.pi/agent/startup-optimization/deferred-tools.ts`，注册表为同目录的 `deferred-tools.json`：
 
-| 上游 package            | 工具                                                            | Exposure |
-| ----------------------- | --------------------------------------------------------------- | -------- |
-| `rpiv-todo`             | `todo`                                                          | direct   |
-| `pi-simplify`           | `simplify_candidates`、`code_smell_scan`、`code_smell_findings` | deferred |
-| `context7-pi`           | `resolve-library-id`、`query-docs`                              | deferred |
-| `pi-codex-imagegen`     | `imagegen`                                                      | deferred |
-| 本地 `pi-skill-manager` | `skill_manage`                                                  | deferred |
+| 上游 package             | 工具                                                            | Exposure |
+| ------------------------ | --------------------------------------------------------------- | -------- |
+| `rpiv-todo`              | `todo`                                                          | direct   |
+| `pi-simplify`            | `simplify_candidates`、`code_smell_scan`、`code_smell_findings` | deferred |
+| `context7-pi`            | `resolve-library-id`、`query-docs`                              | deferred |
+| `pi-codex-imagegen`      | `imagegen`                                                      | deferred |
+| `pi-herdr-worktree-jump` | `herdr_worktree_jump`                                           | deferred |
+| 本地 `pi-skill-manager`  | `skill_manage`                                                  | deferred |
 
 这里记录的是注册策略，不保证每种执行模式都能发现工具；PCC Code/TS 会调整工具目录和原生搜索入口，当前组合尚未完成真实会话的发现与调用验证。
 
-适配层未随本仓库分发。没有该适配层时，不要照抄这五个 package 的空 extension filter，否则工具不会加载；应保留其原生 extension。这里通过配置调用上游入口，不修改上游源码。
+适配层未随本仓库分发。没有该适配层时，不要照抄这六个 package 的空 extension filter，否则工具不会加载；应保留其原生 extension。这里通过配置调用上游入口，不修改上游源码。Worktree Jump 还要求运行于 Herdr 环境；离线检查只验证注册，不执行会话迁移。
 
 ## Skills 来源
 
@@ -148,6 +150,26 @@ Package 自带的 16 个 Skills：
   }
 }
 ```
+
+## 本机与 KVM 的配置边界
+
+共享配置以本机为准，包括 package filters、deferred 注册表、原生规则、Todo guidance、PCC 的 TS 执行模式和以下 Shepherdr profiles：
+
+| Profile            | 模型                              | Thinking |
+| ------------------ | --------------------------------- | -------- |
+| `general`          | `openai-codex/gpt-6.1-sol`        | high     |
+| `general-max`      | `openai-codex/gpt-6.1-sol`        | max      |
+| `explorer`         | `openai-codex/gpt-6-luna`         | high     |
+| `reviewer`         | `openai-codex/gpt-6.1-sol`        | xhigh    |
+| `deepseek-general` | `opencode-go/deepseek-v4.1-flash` | high     |
+
+两端对应 profiles 的角色 prompt 一致；`reviewer` 不自动推测 Git 基线，且与 `deepseek-general` 一样使用独立上下文。模型与 thinking 由 profile 明确指定，不继承父 agent。
+
+KVM 不安装本机的 `claude-opus` profile；自定义模型配置已裁掉 Opus 和 Magpie 的 Claude 订阅路由，PCC 不再添加 Opus provider。非订阅 API 的 Sonnet/Haiku 等配置保留，不复制或删除任何认证数据。这是配置入口裁剪，不是对 Pi 内置模型目录的全局禁用。
+
+KVM 保留自己的 Linux 路径、npm 命令、代理/TLS 启动配置、凭据和宿主 integrations；本机设备标识不会复制过去。另保留 KVM 专用的 `kvm-general`、`kvm-session-diagnostics` profiles。两端均不再安装 `pi-computer-use` 和 `pi-generative-ui`。
+
+已有会话需要 `/reload` 或重开；已运行子 agent 或恢复会话持有的模型不会自动改变。
 
 ## 本地 extensions 与宿主 integrations
 
@@ -190,6 +212,6 @@ pi install git:github.com/angristan/pi-extensions
 pi list
 ```
 
-同时核对 package manifest、`~/.pi/agent/settings.json` 的 filters、适配层注册表，以及本地自动加载入口。本次只读资源检查为：扩展加载错误 0、Skills diagnostics 0、重复工具名 0；未对所有外部服务逐一发起请求。
+同时核对 package manifest、`~/.pi/agent/settings.json` 的 filters、适配层注册表，以及本地自动加载入口。本次两端离线检查均为：扩展加载错误 0、Skills diagnostics 0、重复工具名 0；6 项适配注册提供 9 个工具，Worktree Jump 均只有一个 deferred owner。Shepherdr profiles 经上游解析器加载，模型可在本地目录解析；未发起真实模型请求，也未执行 worktree 迁移。
 
 只发布脱敏清单和必要片段，不要提交完整 `settings.json`、`models.json`、`auth.json`、token、会话或宿主私有配置。
