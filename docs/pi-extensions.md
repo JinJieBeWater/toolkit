@@ -165,7 +165,9 @@ Package 自带的 16 个 Skills：
 
 两端对应 profiles 的角色 prompt 一致；`reviewer` 不自动推测 Git 基线，且与 `deepseek-general` 一样使用独立上下文。模型与 thinking 由 profile 明确指定，不继承父 agent。
 
-KVM 不安装本机的 `claude-opus` profile；自定义模型配置已裁掉 Opus 和 Magpie 的 Claude 订阅路由，PCC 不再添加 Opus provider。非订阅 API 的 Sonnet/Haiku 等配置保留，不复制或删除任何认证数据。这是配置入口裁剪，不是对 Pi 内置模型目录的全局禁用。
+OpenAI 相关模型两端只使用 `openai-codex`。已移除 `openai` 的存储登录，并将 model-router、BTW、Auto Trees 的引用改为 `openai-codex`，模型 ID 和 thinking 不变；其余 providers 和登录保留。Pi 内置登录目录仍可能显示 `openai`，这里没有修改上游源码隐藏它。
+
+KVM 不安装本机的 `claude-opus` profile；自定义模型配置已裁掉 Opus 和 Magpie 的 Claude 订阅路由，PCC 不再添加 Opus provider。非订阅 API 的 Sonnet/Haiku 等配置保留，不复制本机认证。这是配置入口裁剪，不是对 Pi 内置模型目录的全局禁用。
 
 KVM 保留自己的 Linux 路径、npm 命令、代理/TLS 启动配置、凭据和宿主 integrations；本机设备标识不会复制过去。另保留 KVM 专用的 `kvm-general`、`kvm-session-diagnostics` profiles。两端均不再安装 `pi-computer-use` 和 `pi-generative-ui`。
 
