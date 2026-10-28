@@ -2,7 +2,7 @@
 
 这份清单记录我日常使用的 Pi packages、资源过滤、Skills 和本地 integrations，供选型和手动恢复参考。它不是完整配置备份，也不建议全部安装；Pi package 可以执行代码，安装前应检查源码。
 
-更新于 2026-10-27，只展示配置选择与使用方式，不记录安装版本。当前配置 **29 个 package**；以用户主目录为 cwd，资源加载器发现 **38 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
+更新于 2026-10-28，只展示配置选择与使用方式，不记录安装版本。当前配置 **30 个 package**；以用户主目录为 cwd，资源加载器发现 **39 个扩展入口、89 个 Skills**。项目目录还可能带入额外资源。入口数量不等于 package 数量，也不代表外部服务、宿主功能都已激活。
 
 ## Pi packages
 
@@ -42,6 +42,7 @@
 | `npm:@howaboua/pi-agent-board`                         | Extension                  | 原生，2 个入口              | Agent 消息板与只读浏览器查看器                  |
 | `~/my/tools/pi-lovely-mermaid`                         | Extension                  | 原生                        | 在 Pi 中渲染 Mermaid                            |
 | `npm:@howaboua/pi-notes-compaction`                    | Extension                  | 原生，2 个入口              | 持久 notes 与 notes 引导的上下文换窗            |
+| `npm:@ogulcancelik/pi-herdr-worktree-jump`             | Extension                  | 原生                        | 将当前 Pi 会话迁入或迁出 Herdr worktree         |
 
 安装源未锁定依赖，安装时会获取当时可用的包。三个 `~/my/tools/` 条目是独立本地项目，不随本仓库分发。
 
